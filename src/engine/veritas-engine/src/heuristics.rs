@@ -60,7 +60,7 @@ pub fn extract_urls(text: &str) -> Vec<String> {
 /// Buzzer pattern score 0.0..=1.0.
 pub fn buzzer_score(text: &str) -> f64 {
     let lower = text.to_lowercase();
-    let mut score = 0.0;
+    let mut score: f64 = 0.0;
     let imperatives = ["share", "viralkan", "sebarkan", "bagikan", "forward"];
     for k in imperatives {
         if lower.contains(k) {
@@ -78,13 +78,13 @@ pub fn buzzer_score(text: &str) -> f64 {
     if excl >= 3 {
         score += 0.15;
     }
-    score.clamp(0.0, 1.0)
+    score.clamp(0.0, 1.0) as f64
 }
 
 /// Clickbait score 0.0..=1.0.
 pub fn clickbait_score(text: &str) -> f64 {
     let lower = text.to_lowercase();
-    let mut score = 0.0;
+    let mut score: f64 = 0.0;
     let bait = ["you won't believe", "rahasia", "gila", "mencengangkan", "bikin", "viral"];
     for k in bait {
         if lower.contains(k) {
@@ -96,7 +96,7 @@ pub fn clickbait_score(text: &str) -> f64 {
     if first_line.chars().any(|c| c.is_ascii_digit()) {
         score += 0.1;
     }
-    score.clamp(0.0, 1.0)
+    score.clamp(0.0, 1.0) as f64
 }
 
 /// Collect human-readable signal labels.
@@ -192,6 +192,7 @@ pub fn aggregate(
 }
 
 /// Temperature scaling for calibration (placeholder T=1.0).
+#[allow(dead_code)]
 pub fn calibrate(confidence: f64, temperature: f64) -> f64 {
     let t = if temperature <= 0.0 { 1.0 } else { temperature };
     // apply temperature to logit-ish transform

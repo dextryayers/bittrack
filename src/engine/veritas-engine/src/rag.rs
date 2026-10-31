@@ -3,8 +3,6 @@
 use rusqlite::{params, Connection};
 use serde::Serialize;
 use std::path::PathBuf;
-use veritas_core::Evidence;
-
 const EMBED_DIM: usize = 256;
 
 /// Embedding backend.
@@ -12,6 +10,7 @@ pub trait Embedder: Send + Sync {
     /// Embed text into a fixed-dimension vector.
     fn embed(&self, text: &str) -> Vec<f32>;
     /// Dimension.
+    #[allow(dead_code)]
     fn dim(&self) -> usize {
         EMBED_DIM
     }
@@ -25,6 +24,7 @@ pub struct HashingEmbedder {
 
 impl HashingEmbedder {
     /// Create with given dimension.
+    #[allow(dead_code)]
     pub fn new(dim: usize) -> Self {
         Self { dim }
     }
@@ -259,6 +259,23 @@ fn dirs_home() -> PathBuf {
         .or_else(|_| std::env::var("USERPROFILE"))
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("."))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn search_self() {
+        let db = FactDb::open_in_memory(Box::new(HashingEmbedder::default())).unwrap();
+        db.seed(&builtin_seed());
+        let hits = db.search("Vaksin COVID-19 mengandung microchip untuk pelacakan", 3);
+        println!("HITS={}", hits.len());
+        for (fc, s) in &hits {
+            println!("{} {} {}", fc.text, fc.verdict, s);
+        }
+        assert!(!hits.is_empty());
+        assert!(hits[0].1 > 0.9);
+    }
 }
 
 /// Built-in seed claims (Indonesian). Small, for offline RAG baseline.

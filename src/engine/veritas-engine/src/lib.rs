@@ -18,7 +18,7 @@ mod rag;
 
 use veritas_core::{
     sha256_hex, validate_request, AnalyzeRequest, AnalyzeResponse, Audit, Claim, ErrorPayload,
-    Evidence, Heuristics, ProgressEvent, Verdict,
+    Evidence, ProgressEvent, Verdict,
 };
 use veritas_models::ModelManager;
 
@@ -206,16 +206,17 @@ pub extern "C" fn veritas_analyze(
         let mut evidence: Vec<Evidence> = Vec::new();
         let mut evidence_counter: u32 = 0;
         let mut claim_evidence: Vec<Vec<u32>> = Vec::new();
+        let mut rag_verdicts: Vec<Option<String>> = Vec::new();
         {
             let db = engine.inner.factdb.lock().unwrap();
             for ct in &claims_text {
                 let hits = db.search(ct, 3);
                 let mut ids = Vec::new();
+                let mut best: Option<(String, f32)> = None;
                 for (fc, score) in hits {
                     if score < 0.35 {
                         continue;
                     }
-                    // dedup by text
                     if !evidence.iter().any(|e| e.text == fc.text) {
                         evidence_counter += 1;
                         evidence.push(Evidence {
@@ -230,10 +231,12 @@ pub extern "C" fn veritas_analyze(
                     if let Some(e) = evidence.iter().find(|e| e.text == fc.text) {
                         ids.push(e.id);
                     }
-                    // influence classification via known verdict
-                    let _ = (fc.verdict, score);
+                    if best.as_ref().map(|b| score > b.1).unwrap_or(true) {
+                        best = Some((fc.verdict.clone(), score));
+                    }
                 }
                 claim_evidence.push(ids);
+                rag_verdicts.push(best.filter(|b| b.1 >= 0.7).map(|b| b.0));
             }
         }
 
@@ -248,15 +251,8 @@ pub extern "C" fn veritas_analyze(
                 }).unwrap());
             }
             let ev_ids = claim_evidence.get(i).cloned().unwrap_or_default();
-            // RAG-informed classification
-            let (mut verdict, mut confidence, reasoning) = classify_with_rag(ct, &evidence, &ev_ids, opts.threshold);
-            // apply RAG verdict override if strong match
-            if !ev_ids.is_empty() {
-                if let Some(e) = evidence.iter().find(|e| ev_ids.contains(&e.id)) {
-                    // find corresponding fact verdict by matching text in db? use score only
-                    let _ = e;
-                }
-            }
+            let rag_v = rag_verdicts.get(i).cloned().flatten();
+            let (verdict, confidence, reasoning) = classify_with_rag(ct, rag_v.as_deref(), opts.threshold);
             claims.push(Claim {
                 id: (i as u32) + 1,
                 text: ct.clone(),
@@ -267,7 +263,6 @@ pub extern "C" fn veritas_analyze(
                 reasoning,
                 evidence_ids: ev_ids,
             });
-            let _ = verdict;
         }
 
         report("aggregate", 0.9, "aggregating verdict");
@@ -427,83 +422,31 @@ fn split_claims(text: &str, max: usize) -> Vec<String> {
     claims
 }
 
-fn classify_heuristic(claim: &str, _threshold: f64) -> (Verdict, f64, String) {
+fn classify_with_rag(claim: &str, rag_verdict: Option<&str>, _threshold: f64) -> (Verdict, f64, String) {
+    if let Some(rv) = rag_verdict {
+        let v = match rv {
+            "hoax" => Verdict::Hoax,
+            "valid" => Verdict::Valid,
+            "misleading" => Verdict::Misleading,
+            "buzzer" => Verdict::Buzzer,
+            "clickbait" => Verdict::Clickbait,
+            _ => Verdict::Unverifiable,
+        };
+        return (v, 0.85, format!("RAG match to verified fact (verdict: {rv})."));
+    }
+    // fallback heuristic
     let lower = claim.to_lowercase();
-    // keyword-based heuristic baseline (replaced by LLM in later phases)
-    let hoax_keywords = ["hoax", "bohong", "palsu", "fitnah", "disinformasi"];
+    let hoax_keywords = ["hoax", "bohong", "palsu", "fitnah", "disinformasi", "viralkan"];
     let valid_keywords = ["menurut", "data", "penelitian", "resmi", "konfirmasi"];
     let hoax_hits = hoax_keywords.iter().filter(|k| lower.contains(*k)).count();
     let valid_hits = valid_keywords.iter().filter(|k| lower.contains(*k)).count();
-    let (verdict, conf) = if hoax_hits > valid_hits {
-        (Verdict::Hoax, 0.6 + 0.05 * hoax_hits as f64)
+    if hoax_hits > valid_hits {
+        (Verdict::Hoax, (0.55 + 0.05 * hoax_hits as f64).min(0.9), "Heuristic: hoax keywords detected.".into())
     } else if valid_hits > hoax_hits {
-        (Verdict::Valid, 0.6 + 0.05 * valid_hits as f64)
+        (Verdict::Valid, (0.55 + 0.05 * valid_hits as f64).min(0.9), "Heuristic: valid keywords detected.".into())
     } else {
-        (Verdict::Unverifiable, 0.4)
-    };
-    let conf = conf.min(0.95);
-    let reasoning = format!(
-        "Heuristic baseline (LLM not enabled in this build). threshold={_threshold:.2}"
-    );
-    (verdict, conf, reasoning)
-}
-
-fn aggregate(claims: &[Claim], _threshold: f64, abstain_below: f64) -> (Verdict, f64) {
-    if claims.is_empty() {
-        return (Verdict::Unverifiable, 0.0);
+        (Verdict::Unverifiable, 0.4, "Heuristic: insufficient signal.".into())
     }
-    // importance-weighted majority
-    let mut scores: std::collections::BTreeMap<&str, f64> = std::collections::BTreeMap::new();
-    let mut total = 0.0;
-    for c in claims {
-        let w = c.importance as f64;
-        *scores.entry(c.verdict.as_str()).or_insert(0.0) += w * c.confidence;
-        total += w;
-    }
-    let (best, best_score) = scores
-        .iter()
-        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-        .map(|(k, v)| (*k, *v))
-        .unwrap_or(("unverifiable", 0.0));
-    let conf = if total > 0.0 { best_score / total } else { 0.0 };
-    if conf < abstain_below {
-        return (Verdict::Unverifiable, conf);
-    }
-    let verdict = match best {
-        "hoax" => Verdict::Hoax,
-        "misleading" => Verdict::Misleading,
-        "clickbait" => Verdict::Clickbait,
-        "buzzer" => Verdict::Buzzer,
-        "valid" => Verdict::Valid,
-        _ => Verdict::Unverifiable,
-    };
-    (verdict, conf.min(1.0))
-}
-
-fn buzzer_score(text: &str) -> f64 {
-    let lower = text.to_lowercase();
-    let imperatives = ["share", "viralkan", "sebarkan", "bagikan"];
-    let hits = imperatives.iter().filter(|k| lower.contains(*k)).count();
-    (hits as f64 * 0.2).min(1.0)
-}
-
-fn clickbait_score(text: &str) -> f64 {
-    // crude: excessive caps
-    let caps = text.chars().filter(|c| c.is_uppercase()).count();
-    let total = text.chars().count().max(1);
-    (caps as f64 / total as f64 * 2.0).min(1.0)
-}
-
-fn collect_signals(text: &str) -> Vec<String> {
-    let mut sigs = Vec::new();
-    let lower = text.to_lowercase();
-    if lower.contains("share") || lower.contains("viralkan") {
-        sigs.push("imperative_share".into());
-    }
-    if text.chars().filter(|c| c.is_uppercase()).count() > text.len() / 4 {
-        sigs.push("excessive_caps".into());
-    }
-    sigs
 }
 
 fn build_summary(verdict: Verdict, confidence: f64, n_claims: usize) -> String {
