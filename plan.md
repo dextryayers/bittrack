@@ -7,6 +7,12 @@
 > Status: Draft for review
 > Principle: No backend. No cloud. No microservices. One local app, one native engine library, fully offline-capable.
 
+> Implementation note (V1.0-Alpha): the shipped engine uses local GGUF
+> inference through llama.cpp, live trusted-host evidence retrieval, and
+> display-only heuristics. The offline RAG fact store, weighted aggregation, and
+> heuristic temperature calibration described below were removed and are not
+> part of the current build. See `docs/model-card.md` for the actual system.
+
 ---
 
 ## 0. Executive Summary

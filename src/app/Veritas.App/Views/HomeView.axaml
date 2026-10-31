@@ -21,20 +21,20 @@
                         </Border>
                         <StackPanel VerticalAlignment="Center">
                             <TextBlock Text="Veritas" FontSize="30" FontWeight="Bold" Foreground="White" />
-                            <TextBlock Text="Hoax dan buzzer detector" Foreground="#A9B7CF" FontSize="13" />
+                            <TextBlock Text="Analisis hoaks dengan model GGUF lokal" Foreground="#A9B7CF" FontSize="13" />
                         </StackPanel>
                     </StackPanel>
-                    <TextBlock Text="Tempel teks berita, lalu dapatkan verdict, confidence, klaim, dan bukti dari basis fakta lokal."
+                    <TextBlock Text="Tempel teks berita, tautan, atau komentar. Model AI lokal menganalisis klaim, mencari bukti dari sumber tepercaya, lalu memberi verdict, ringkasan, dan persentase kebenaran."
                                Foreground="#C7D2E5" TextWrapping="Wrap" MaxWidth="600" HorizontalAlignment="Left" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Border Background="#1FFFFFFF" CornerRadius="999" Padding="10,4">
-                            <TextBlock Text="100% lokal" Foreground="White" FontSize="11" FontWeight="SemiBold" />
+                            <TextBlock Text="Model lokal" Foreground="White" FontSize="11" FontWeight="SemiBold" />
                         </Border>
                         <Border Background="#1FFFFFFF" CornerRadius="999" Padding="10,4">
-                            <TextBlock Text="6 kelas verdict" Foreground="White" FontSize="11" FontWeight="SemiBold" />
+                            <TextBlock Text="Bukti nyata" Foreground="White" FontSize="11" FontWeight="SemiBold" />
                         </Border>
                         <Border Background="#1FFFFFFF" CornerRadius="999" Padding="10,4">
-                            <TextBlock Text="Tanpa cloud" Foreground="White" FontSize="11" FontWeight="SemiBold" />
+                            <TextBlock Text="Tanpa simulasi" Foreground="White" FontSize="11" FontWeight="SemiBold" />
                         </Border>
                     </StackPanel>
                 </StackPanel>
@@ -48,43 +48,70 @@
 
         <Border Classes="card">
             <StackPanel Spacing="16">
-                <TextBlock Text="Teks berita" Classes="label" />
-                <TextBox Text="{Binding InputText}"
-                         AcceptsReturn="True"
-                         TextWrapping="Wrap"
-                         MinHeight="200"
-                         PlaceholderText="Paste teks berita atau artikel di sini..." />
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Tautan berita" Classes="label" />
+                    <TextBox Text="{Binding InputUrl}" PlaceholderText="https://contoh.com/berita/..." />
+                    <TextBlock Text="Isi artikel diambil langsung dari tautan. Jika pengambilan gagal, tempel teksnya di bawah."
+                               Classes="muted" FontSize="11" />
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Teks berita" Classes="label" />
+                    <TextBox Text="{Binding InputText}"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             MinHeight="160"
+                             PlaceholderText="Paste teks berita atau artikel di sini..." />
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Komentar pembaca (opsional)" Classes="label" />
+                    <TextBox Text="{Binding InputComments}"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             MinHeight="72"
+                             PlaceholderText="Tempel komentar untuk membantu model mengenali pola buzzer..." />
+                </StackPanel>
+
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <Button Content="Analisis sekarang" Classes="primary" Command="{Binding AnalyzeCommand}" IsEnabled="{Binding !IsBusy}" />
                     <Button Content="Bersihkan" Classes="ghost" Command="{Binding ClearCommand}" />
-                    <ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="True" Width="200" VerticalAlignment="Center" />
+                    <ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="False" Minimum="0" Maximum="100"
+                                 Value="{Binding AnalysisProgress}" Width="200" VerticalAlignment="Center" />
                 </StackPanel>
-                <TextBlock Text="{Binding Status}" Classes="muted" />
+                <TextBlock Text="{Binding Status}" Classes="muted" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
 
         <StackPanel Margin="0,24,0,8" Spacing="12">
             <TextBlock Text="Cara kerja" Classes="h2" />
-            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
+            <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="12">
                 <Border Grid.Column="0" Classes="cardAlt lift">
                     <StackPanel Spacing="6">
                         <TextBlock Text="01" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
-                        <TextBlock Text="Normalisasi dan ekstraksi klaim" FontWeight="SemiBold" TextWrapping="Wrap" />
-                        <TextBlock Text="Input dibersihkan dan dipecah menjadi klaim yang dapat diverifikasi." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                        <TextBlock Text="Ambil masukan" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="Teks, tautan artikel, komentar, atau teks poster hasil OCR." Classes="muted" FontSize="12" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
                 <Border Grid.Column="1" Classes="cardAlt lift">
                     <StackPanel Spacing="6">
                         <TextBlock Text="02" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
-                        <TextBlock Text="Retrieval basis fakta lokal" FontWeight="SemiBold" TextWrapping="Wrap" />
-                        <TextBlock Text="Klaim dicocokkan dengan basis fakta terverifikasi menggunakan embedding lokal." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                        <TextBlock Text="Cari bukti" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="Cek fakta dan ensiklopedia tepercaya diambil langsung dari internet." Classes="muted" FontSize="12" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
                 <Border Grid.Column="2" Classes="cardAlt lift">
                     <StackPanel Spacing="6">
                         <TextBlock Text="03" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
-                        <TextBlock Text="Klasifikasi dan agregasi" FontWeight="SemiBold" TextWrapping="Wrap" />
-                        <TextBlock Text="Verdict, confidence, dan sinyal buzzer dihitung dengan bobot yang dapat diaudit." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                        <TextBlock Text="Inferensi GGUF" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="Qwen 2.5 berjalan di perangkat ini dengan keluaran JSON terbatas skema." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="3" Classes="cardAlt lift">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="04" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
+                        <TextBlock Text="Hasil jujur" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="Verdict, keyakinan, persentase kebenaran, klaim, dan peringatan." Classes="muted" FontSize="12" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
             </Grid>

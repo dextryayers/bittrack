@@ -12,7 +12,7 @@
         <StackPanel Margin="32" Spacing="20" MaxWidth="980">
             <StackPanel Spacing="4">
                 <TextBlock Text="Hasil analisis" Classes="h1" />
-                <TextBlock Text="Setiap verdict disertai confidence, klaim, bukti, dan sinyal yang dapat diaudit." Classes="muted" />
+                <TextBlock Text="Verdict dari model GGUF lokal, disertai ringkasan, persentase kebenaran, klaim, dan bukti yang bisa diperiksa." Classes="muted" TextWrapping="Wrap" />
             </StackPanel>
 
             <Border Classes="card" IsVisible="{Binding HasResult}" Opacity="{Binding ResultOpacity}">
@@ -21,23 +21,51 @@
                         <DoubleTransition Property="Opacity" Duration="0:0:0.35" Easing="CubicEaseOut" />
                     </Transitions>
                 </Border.Transitions>
-                <StackPanel Spacing="16">
-                    <StackPanel Orientation="Horizontal" Spacing="16">
-                        <Border Background="{Binding ResultVerdict, Converter={StaticResource VerdictBrush}}"
-                                CornerRadius="10" Padding="14,8">
-                            <TextBlock Text="{Binding ResultVerdict}" Foreground="White" FontWeight="Bold" FontSize="16" />
+                <StackPanel Spacing="18">
+                    <Grid ColumnDefinitions="Auto,*,*,*" ColumnSpacing="18">
+                        <Border Grid.Column="0" Background="{Binding ResultVerdict, Converter={StaticResource VerdictBrush}}"
+                                CornerRadius="10" Padding="16,10" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding ResultVerdict}" Foreground="White" FontWeight="Bold" FontSize="18" />
                         </Border>
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="Confidence" Classes="label" />
-                            <TextBlock Text="{Binding ResultConfidence, StringFormat='{}{0:P0}'}" FontSize="22" FontWeight="Bold" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Text="Keyakinan verdict" Classes="label" />
+                            <TextBlock Text="{Binding ResultConfidence, StringFormat='{}{0:P0}'}" FontSize="24" FontWeight="Bold" />
+                            <ProgressBar Minimum="0" Maximum="1" Value="{Binding ResultConfidence}"
+                                         Foreground="{Binding ResultVerdict, Converter={StaticResource VerdictBrush}}" />
                         </StackPanel>
-                    </StackPanel>
-
-                    <ProgressBar Minimum="0" Maximum="1" Value="{Binding ResultConfidence}" Foreground="{Binding ResultVerdict, Converter={StaticResource VerdictBrush}}" />
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Text="Kebenaran klaim" Classes="label" />
+                            <TextBlock Text="{Binding ResultTruthPercentage, StringFormat='{}{0}%'}" FontSize="24" FontWeight="Bold" />
+                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding ResultTruthPercentage}"
+                                         Foreground="{DynamicResource SuccessBrush}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="3" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Text="Model" Classes="label" />
+                            <TextBlock Text="{Binding ResultModel}" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
 
                     <TextBlock Text="{Binding ResultSummary}" TextWrapping="Wrap" FontSize="14" />
 
-                    <StackPanel Spacing="8">
+                    <StackPanel Spacing="8" IsVisible="{Binding HasRedFlags}">
+                        <TextBlock Text="Tanda manipulasi" Classes="h2" />
+                        <ItemsControl ItemsSource="{Binding ResultRedFlags}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="999" Padding="10,4" Margin="0,0,8,8">
+                                        <TextBlock Text="{Binding}" FontSize="12" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" />
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <StackPanel Spacing="8" IsVisible="{Binding HasClaims}">
                         <TextBlock Text="Klaim" Classes="h2" />
                         <ItemsControl ItemsSource="{Binding ResultClaims}">
                             <ItemsControl.ItemTemplate>
@@ -48,7 +76,8 @@
                                             <StackPanel Orientation="Horizontal" Spacing="10">
                                                 <TextBlock Text="{Binding Verdict}" FontSize="12" FontWeight="Bold"
                                                            Foreground="{Binding Verdict, Converter={StaticResource VerdictBrush}}" />
-                                                <TextBlock Text="{Binding Confidence, StringFormat='{}{0:P0}'}" FontSize="12" Classes="muted" />
+                                                <TextBlock Text="{Binding Confidence, StringFormat='yakin {0:P0}'}" FontSize="12" Classes="muted" />
+                                                <TextBlock Text="{Binding Type}" FontSize="12" Classes="muted" />
                                             </StackPanel>
                                             <TextBlock Text="{Binding Reasoning}" FontSize="12" Classes="muted" TextWrapping="Wrap" />
                                         </StackPanel>
@@ -58,7 +87,7 @@
                         </ItemsControl>
                     </StackPanel>
 
-                    <StackPanel Spacing="8">
+                    <StackPanel Spacing="8" IsVisible="{Binding HasEvidence}">
                         <TextBlock Text="Bukti" Classes="h2" />
                         <ItemsControl ItemsSource="{Binding ResultEvidence}">
                             <ItemsControl.ItemTemplate>
@@ -67,10 +96,14 @@
                                         <StackPanel Spacing="4">
                                             <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
                                             <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="999" Padding="8,2">
+                                                    <TextBlock Text="{Binding Kind}" FontSize="11" Foreground="{DynamicResource AccentBrush}" />
+                                                </Border>
                                                 <TextBlock Text="{Binding Source}" FontSize="12" FontWeight="SemiBold" />
-                                                <TextBlock Text="{Binding Score, StringFormat='score {0:F2}'}" FontSize="12" Classes="muted" />
+                                                <TextBlock Text="{Binding Score, StringFormat='skor {0:F2}'}" FontSize="12" Classes="muted" />
                                                 <TextBlock Text="{Binding Date}" FontSize="12" Classes="muted" />
                                             </StackPanel>
+                                            <SelectableTextBlock Text="{Binding Url}" FontSize="11" Classes="muted" TextWrapping="Wrap" />
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>
@@ -78,8 +111,19 @@
                         </ItemsControl>
                     </StackPanel>
 
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="Sinyal heuristik" Classes="h2" />
+                    <StackPanel Spacing="8" IsVisible="{Binding HasWarnings}">
+                        <TextBlock Text="Peringatan" Classes="h2" />
+                        <ItemsControl ItemsSource="{Binding ResultWarnings}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontSize="12" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" Margin="0,2" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <StackPanel Spacing="8" IsVisible="{Binding HasSignals}">
+                        <TextBlock Text="Sinyal heuristik (bukan verdict)" Classes="h2" />
                         <ItemsControl ItemsSource="{Binding ResultSignals}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -88,8 +132,8 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="999" Padding="10,4" Margin="0,0,8,8">
-                                        <TextBlock Text="{Binding}" FontSize="12" Foreground="{DynamicResource AccentBrush}" />
+                                    <Border Background="{DynamicResource CardAltBrush}" CornerRadius="999" Padding="10,4" Margin="0,0,8,8">
+                                        <TextBlock Text="{Binding}" FontSize="12" Classes="muted" />
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -101,7 +145,7 @@
             <Border Classes="card" IsVisible="{Binding !HasResult}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="Belum ada hasil" Classes="h2" />
-                    <TextBlock Text="Jalankan analisis dari halaman Beranda untuk melihat verdict, klaim, bukti, dan sinyal." Classes="muted" TextWrapping="Wrap" />
+                    <TextBlock Text="Jalankan analisis dari halaman Beranda atau Poster untuk melihat verdict, ringkasan, persentase kebenaran, klaim, dan bukti." Classes="muted" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
         </StackPanel>

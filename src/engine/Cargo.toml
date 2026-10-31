@@ -18,14 +18,10 @@ repository = "https://github.com/veritas/veritas"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 sha2 = "0.10"
 reqwest = { version = "0.12", features = ["stream", "blocking", "rustls-tls", "gzip", "brotli", "deflate"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
 scraper = "0.29"
 base64 = "0.22"
 urlencoding = "2"
-cbindgen = "0.27"

@@ -14,7 +14,7 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -76,7 +76,6 @@ struct EngineInner {
     downloads: Mutex<()>,
     config: EngineConfig,
     cancel: AtomicBool,
-    request_counter: AtomicU64,
     #[cfg(feature = "llm")]
     backend: Mutex<Option<llama_cpp_2::llama_backend::LlamaBackend>>,
     #[cfg(feature = "llm")]
@@ -117,7 +116,6 @@ pub extern "C" fn veritas_init(config_json: *const c_char) -> *mut VeritasEngine
                 downloads: Mutex::new(()),
                 config,
                 cancel: AtomicBool::new(false),
-                request_counter: AtomicU64::new(0),
                 #[cfg(feature = "llm")]
                 backend: Mutex::new(None),
                 #[cfg(feature = "llm")]
@@ -237,7 +235,6 @@ pub unsafe extern "C" fn veritas_analyze(
             return error_json("validation", &problems.join("; "));
         }
 
-        let rid = engine.inner.request_counter.fetch_add(1, Ordering::SeqCst) + 1;
         engine.inner.cancel.store(false, Ordering::SeqCst);
 
         let report = |stage: &str, percent: f64, message: &str| {
@@ -269,7 +266,6 @@ pub unsafe extern "C" fn veritas_analyze(
                 } else {
                     report("error", 0.0, &err.message);
                 }
-                let _ = rid;
                 error_json(&err.code, &err.message)
             }
         }
@@ -333,12 +329,17 @@ fn analyze(
     }
 
     let poster = normalize_text(req.poster_text.as_deref().unwrap_or(""));
-    let comments = normalize_text(req.comments.as_deref().unwrap_or(""));
+    let mut comments = normalize_text(req.comments.as_deref().unwrap_or(""));
     if body.trim().is_empty() && poster.is_empty() {
-        return Err(ErrorPayload {
-            code: "empty_input".into(),
-            message: "Tidak ada teks berita atau teks poster untuk dianalisis.".into(),
-        });
+        if comments.is_empty() {
+            return Err(ErrorPayload {
+                code: "empty_input".into(),
+                message: "Tidak ada teks berita atau teks poster untuk dianalisis.".into(),
+            });
+        }
+        // Comments-only input: the comment itself is the claim under review.
+        body = comments.clone();
+        comments.clear();
     }
     check_cancel(inner)?;
 
@@ -433,11 +434,14 @@ fn analyze(
     // ------------------------------------------------------------------
     report("map", 0.92, "menyusun hasil");
     let mut confidence = clamp_ratio(parsed.confidence);
-    let mut truth_percentage = parsed.truth_score.clamp(0, 100) as u8;
+    let truth_percentage = parsed.truth_score.clamp(0, 100) as u8;
     let mut verdict = Verdict::parse(&parsed.verdict).unwrap_or(Verdict::Unverifiable);
 
     if parsed.verdict.trim().is_empty() {
         warnings.push("Model tidak memilih verdict; ditandai tidak dapat diverifikasi.".into());
+    }
+    if parsed.truth_score < 0 || parsed.truth_score > 100 {
+        warnings.push("Skor kebenaran model di luar 0..100 dan telah dipotong.".into());
     }
 
     if confidence < opts.threshold {
@@ -460,17 +464,13 @@ fn analyze(
                 .into(),
         );
     }
-    if parsed.truth_score < 0 || parsed.truth_score > 100 {
-        truth_percentage = parsed.truth_score.clamp(0, 100) as u8;
-        warnings.push("Skor kebenaran model di luar 0..100 dan telah dipotong.".into());
-    }
     if evidence.is_empty() && matches!(verdict, Verdict::Hoax | Verdict::Valid) {
         warnings.push(
             "Verdict tegas diberikan tanpa bukti referensi yang ditemukan; pertimbangkan verifikasi manual."
                 .into(),
         );
     }
-    confidence = clamp_ratio((confidence * 100.0).round() / 100.0);
+    confidence = (confidence * 100.0).round() / 100.0;
 
     let valid_evidence_ids: std::collections::BTreeSet<u32> =
         evidence.iter().map(|e| e.id).collect();
@@ -1210,5 +1210,31 @@ mod tests {
             evidence_query("Vaksin COVID-19 microchip 5G", "isi lain", ""),
             "Vaksin COVID-19 microchip 5G"
         );
+    }
+
+    /// End-to-end check against the real 1.9 GB GGUF model. Run with:
+    /// `cargo test -p veritas-engine real_model -- --ignored --nocapture`
+    #[test]
+    #[ignore = "requires the downloaded GGUF model"]
+    fn real_model_produces_schema_valid_verdict() {
+        let engine = veritas_init(std::ptr::null());
+        assert!(!engine.is_null());
+        let req = request(
+            "VIRAL! Vaksin COVID-19 mengandung microchip 5G dan pemerintah menyembunyikan \
+             faktanya. Sebarkan sebelum dihapus! Bukti asli 100%.",
+        );
+        let json = CString::new(serde_json::to_string(&req).unwrap()).unwrap();
+        let out = unsafe { veritas_analyze(engine, json.as_ptr(), None, std::ptr::null_mut()) };
+        let raw = take_string(out);
+        println!("{raw}");
+        let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert!(
+            value.get("code").is_none(),
+            "engine returned error: {raw}"
+        );
+        assert!(value["verdict"].is_string());
+        assert!(value["truth_percentage"].as_u64().unwrap() <= 100);
+        assert!(!value["summary"].as_str().unwrap().is_empty());
+        unsafe { veritas_free(engine) };
     }
 }

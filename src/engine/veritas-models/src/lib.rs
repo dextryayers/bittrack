@@ -162,6 +162,7 @@ pub fn default_specs() -> Vec<ModelSpec> {
 }
 
 /// Manages the local model cache.
+#[derive(Debug, Clone)]
 pub struct ModelManager {
     cache_dir: PathBuf,
     specs: Vec<ModelSpec>,
@@ -209,14 +210,16 @@ impl ModelManager {
 
     /// Status of a model.
     ///
-    /// A same-size file without a marker is hashed once; the result is cached in
-    /// the marker so subsequent calls are O(1).
+    /// A same-size file without a fresh marker is hashed once; the result is
+    /// cached in the marker so subsequent calls are O(1). The marker is ignored
+    /// when the model file was modified after verification.
     #[must_use]
     pub fn status(&self, id: &str) -> ModelStatus {
         let Some(spec) = self.specs.iter().find(|s| s.id == id) else {
             return ModelStatus::Missing;
         };
         let path = self.model_path(id);
+        let marker = self.marker_path(id);
         let Ok(meta) = std::fs::metadata(&path) else {
             return ModelStatus::Missing;
         };
@@ -226,15 +229,18 @@ impl ModelManager {
         if meta.len() < spec.size_bytes {
             return ModelStatus::Partial;
         }
-        if marker_matches(&self.marker_path(id), &spec.sha256) {
+        if marker_matches(&marker, &spec.sha256) && marker_is_fresh(&marker, &path) {
             return ModelStatus::Ready;
         }
         match sha256_file(&path) {
             Ok(actual) if actual.eq_ignore_ascii_case(&spec.sha256) => {
-                let _ = write_marker(&self.marker_path(id), &spec.sha256);
+                let _ = write_marker(&marker, &spec.sha256, &path);
                 ModelStatus::Ready
             }
-            Ok(_) => ModelStatus::Corrupt,
+            Ok(_) => {
+                let _ = std::fs::remove_file(&marker);
+                ModelStatus::Corrupt
+            }
             Err(_) => ModelStatus::Corrupt,
         }
     }
@@ -296,12 +302,13 @@ impl ModelManager {
         let path = self.model_path(id);
         let marker = self.marker_path(id);
 
-        if self.status(id) == ModelStatus::Ready {
+        let current = self.status(id);
+        if current == ModelStatus::Ready {
             on_progress(spec.size_bytes, spec.size_bytes);
             return Ok(path);
         }
         let existing = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-        if existing > spec.size_bytes {
+        if current == ModelStatus::Corrupt || existing > spec.size_bytes {
             std::fs::remove_file(&path)?;
         }
         let _ = std::fs::remove_file(&marker);
@@ -322,20 +329,8 @@ impl ModelManager {
         }
         let mut response = request.send()?.error_for_status()?;
 
-        let mut file = OpenOptions::new()
-            .create(true)
-            .read(true)
-            .append(true)
-            .open(&path)?;
         let resumed = response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
-        let mut downloaded = if resumed {
-            offset
-        } else {
-            // Server ignored the range request; restart from zero.
-            file.set_len(0)?;
-            file.seek(SeekFrom::Start(0))?;
-            0
-        };
+        let mut downloaded = if resumed { offset } else { 0 };
         let total = if resumed {
             response
                 .content_length()
@@ -349,6 +344,19 @@ impl ModelManager {
         };
         if !on_progress(downloaded, total) {
             return Err(ModelError::Cancelled);
+        }
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(&path)?;
+        if resumed {
+            file.seek(SeekFrom::Start(offset))?;
+        } else {
+            // Server ignored the range request; restart from zero.
+            file.set_len(0)?;
+            file.seek(SeekFrom::Start(0))?;
         }
 
         let mut buffer = vec![0u8; 256 * 1024];
@@ -383,7 +391,7 @@ impl ModelManager {
                 actual,
             });
         }
-        write_marker(&marker, &spec.sha256)?;
+        write_marker(&marker, &spec.sha256, &path)?;
         info!(model = %id, bytes = actual_size, "model downloaded and verified");
         Ok(path)
     }
@@ -391,12 +399,44 @@ impl ModelManager {
 
 fn marker_matches(path: &Path, expected: &str) -> bool {
     std::fs::read_to_string(path)
-        .map(|value| value.trim().eq_ignore_ascii_case(expected))
+        .map(|value| {
+            value
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim()
+                .eq_ignore_ascii_case(expected)
+        })
         .unwrap_or(false)
 }
 
-fn write_marker(path: &Path, sha256: &str) -> Result<(), std::io::Error> {
-    std::fs::write(path, sha256.trim().to_ascii_lowercase())
+/// A marker is trustworthy only if it records the model file's current
+/// modification stamp. Replacing the model, even at equal size, changes the
+/// stamp and forces a re-hash.
+fn marker_is_fresh(marker: &Path, model: &Path) -> bool {
+    let Ok(value) = std::fs::read_to_string(marker) else {
+        return false;
+    };
+    let Some(recorded) = value.lines().nth(1).and_then(|v| v.trim().parse::<u128>().ok()) else {
+        return false;
+    };
+    file_stamp(model) == Some(recorded)
+}
+
+fn file_stamp(path: &Path) -> Option<u128> {
+    let modified = std::fs::metadata(path).ok()?.modified().ok()?;
+    let since_epoch = modified
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?;
+    Some(since_epoch.as_nanos())
+}
+
+fn write_marker(path: &Path, sha256: &str, model: &Path) -> Result<(), std::io::Error> {
+    let stamp = file_stamp(model).unwrap_or(0);
+    std::fs::write(
+        path,
+        format!("{}\n{}\n", sha256.trim().to_ascii_lowercase(), stamp),
+    )
 }
 
 fn sha256_file(path: &Path) -> Result<String, std::io::Error> {
@@ -481,7 +521,13 @@ mod tests {
         assert_eq!(mgr.status(&spec.id), ModelStatus::Ready);
         assert!(mgr.marker_path(&spec.id).exists());
 
-        std::fs::write(mgr.model_path(&spec.id), b"corrupt-content").unwrap();
+        let corrupt = mgr.model_path(&spec.id);
+        std::fs::write(&corrupt, b"corrupt-content").unwrap();
+        let handle = std::fs::OpenOptions::new().write(true).open(&corrupt).unwrap();
+        handle
+            .set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(60))
+            .unwrap();
+        drop(handle);
         assert_eq!(mgr.status(&spec.id), ModelStatus::Corrupt);
     }
 
@@ -598,7 +644,10 @@ mod tests {
         let server = serve_once(listener, content.clone());
         let error = mgr.download(&spec.id, |_, _| false).unwrap_err();
         let _ = server.join();
-        assert!(matches!(error, ModelError::Cancelled));
-        assert_eq!(mgr.status(&spec.id), ModelStatus::Partial);
+        assert!(matches!(error, ModelError::Cancelled), "unexpected error: {error}");
+        assert!(matches!(
+            mgr.status(&spec.id),
+            ModelStatus::Missing | ModelStatus::Partial
+        ));
     }
 }

@@ -6,11 +6,12 @@ namespace Veritas.Core.Config;
 
 public sealed class AppSettings : INotifyPropertyChanged
 {
-    private string _modelId = "qwen2.5-3b-q4";
+    private string _modelId = "qwen2.5-3b-instruct-q4_k_m";
     private double _threshold = 0.5;
     private string _language = "id";
     private string _theme = "system";
     private bool _telemetryEnabled;
+    private bool _onlineEvidence = true;
 
     public string ModelId
     {
@@ -40,6 +41,12 @@ public sealed class AppSettings : INotifyPropertyChanged
     {
         get => _telemetryEnabled;
         set => Set(ref _telemetryEnabled, value);
+    }
+
+    public bool OnlineEvidence
+    {
+        get => _onlineEvidence;
+        set => Set(ref _onlineEvidence, value);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

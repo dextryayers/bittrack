@@ -1,0 +1,54 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Veritas.App.ViewModels"
+             x:Class="Veritas.App.Views.PosterView"
+             x:DataType="vm:MainViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="32" Spacing="20" MaxWidth="980">
+            <StackPanel Spacing="4">
+                <TextBlock Text="Analisis poster" Classes="h1" />
+                <TextBlock Text="Unggah poster berita, ekstrak teksnya dengan OCR lokal Windows, lalu analisis dengan model GGUF." Classes="muted" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <Border Classes="card">
+                <StackPanel Spacing="16">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Content="Pilih gambar poster" Classes="primary" Command="{Binding PickPosterCommand}" IsEnabled="{Binding !IsOcrBusy}" />
+                        <Button Content="Bersihkan" Classes="ghost" Command="{Binding ClearPosterCommand}" />
+                        <ProgressBar IsVisible="{Binding IsOcrBusy}" IsIndeterminate="True" Width="180" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <Border Classes="cardAlt" MinHeight="180" IsVisible="{Binding HasPosterPreview}">
+                        <Image Source="{Binding PosterPreview}" Stretch="Uniform" MaxHeight="320" />
+                    </Border>
+
+                    <TextBlock Text="{Binding PosterImagePath}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding PosterStatus}" Classes="muted" TextWrapping="Wrap" />
+
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Teks hasil OCR (bisa diperbaiki)" Classes="label" />
+                        <TextBox Text="{Binding PosterText}"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 MinHeight="160"
+                                 PlaceholderText="Teks poster akan muncul di sini, atau tempel teks poster secara manual..." />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Content="Analisis poster" Classes="primary" Command="{Binding AnalyzePosterCommand}" IsEnabled="{Binding !IsBusy}" />
+                        <ProgressBar IsVisible="{Binding IsBusy}" Minimum="0" Maximum="100" Value="{Binding AnalysisProgress}" Width="200" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding Status}" Classes="muted" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Border Classes="card">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Catatan" Classes="h2" />
+                    <TextBlock Text="OCR berjalan di perangkat dan hasilnya bisa salah, terutama pada poster dengan tulisan dekoratif atau resolusi rendah. Periksa teks sebelum menekan Analisis poster. Hasil analisis muncul di tab Analisis."
+                               Classes="muted" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

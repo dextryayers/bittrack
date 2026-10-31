@@ -41,7 +41,7 @@ def main():
     latencies = []
     for _ in range(args.runs):
         for text in texts:
-            req = json.dumps({"text": text, "lang_hint": "id", "options": {"threshold": 0.5, "include_heuristics": True, "max_claims": 8}})
+            req = json.dumps({"text": text, "lang_hint": "id", "options": {"threshold": 0.5, "include_heuristics": True, "max_claims": 8, "online_evidence": False}})
             start = time.perf_counter()
             ptr = lib.veritas_analyze(handle, req.encode("utf-8"), None, None)
             elapsed = (time.perf_counter() - start) * 1000.0

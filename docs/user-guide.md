@@ -10,16 +10,30 @@ Download the package for your platform from the Releases page.
 
 ## First Run
 
-Veritas works offline. On first launch it creates a local fact database in your
-user data directory and seeds it with verified Indonesian claims. No account is
+Veritas needs a local GGUF model. Open Pengaturan, select a model, and choose
+Unduh / lanjutkan model. The default Qwen 2.5 3B model is 1.93 GB; partial
+downloads resume and the finished file is verified with SHA-256. No account is
 required.
 
-## Analyze Text
+## Analyze Text or a Link
 
-1. Open the Beranda view.
-2. Paste an article or message.
+1. Open Beranda.
+2. Paste article text, a news URL, or reader comments. At least one is required.
 3. Select Analisis sekarang.
-4. Review the verdict, confidence, claims, evidence, and heuristic signals.
+4. Wait while the engine fetches the article, searches trusted evidence, and
+   runs the local model. Progress is shown under the buttons.
+5. Review the result in Analisis: verdict, model confidence, truth percentage,
+   summary, claims, evidence, red flags, and warnings.
+
+## Analyze a Poster
+
+1. Open Poster.
+2. Select Pilih gambar poster and choose a PNG, JPEG, BMP, WebP, or TIFF image.
+3. Windows OCR extracts the text locally. Inspect and correct it in the text box.
+4. Select Analisis poster. The result appears in the Analisis tab.
+
+OCR quality depends on image resolution and typography. Low-quality posters can
+produce incorrect text; always check it before analysis.
 
 ## Understand the Result
 
@@ -27,28 +41,34 @@ required.
 - Misleading: partly true but framed deceptively.
 - Clickbait: headline exaggerates or misrepresents the body.
 - Buzzer: coordinated amplification pattern.
-- Valid: consistent with verified sources.
-- Unverifiable: insufficient evidence to decide.
+- Valid: consistent with trusted sources.
+- Unverifiable: insufficient evidence or confidence.
 
-Confidence is calibrated. For substantive verdicts it estimates the probability
-that the verdict is correct. For unverifiable results it estimates the
-probability that the text cannot be decided from the available evidence. A low
-confidence result is an invitation to verify manually, not a final judgment.
+**Keyakinan verdict** is the model's confidence that its verdict is correct.
+**Kebenaran klaim** is its estimate that the core claim is true. They answer
+different questions and can disagree.
+
+Warnings report problems such as a failed URL fetch, missing evidence, low
+confidence, or inconsistent model output. A warning is not a verdict.
 
 ## History
 
-Every analysis is stored locally. Open Riwayat to review or clear it. History is
-never uploaded.
+Every analysis is stored locally in `%LOCALAPPDATA%\Veritas\history.sqlite`.
+Open Riwayat to review or clear it. History is never uploaded.
 
 ## Settings
 
-- Model: choose the GGUF model tier.
+- Model: choose, download, or resume a GGUF model.
+- Online evidence: fetch fact-check and encyclopedia citations.
 - Threshold: higher values make verdicts more conservative.
 - Language: Indonesian or English.
 - Theme: system, light, or dark.
 - Telemetry: off by default.
 
+Model and evidence changes take effect after restarting the app.
+
 ## Privacy
 
-Veritas performs inference locally. The analysis path makes no network calls.
-Network access is used only for user-initiated model or database updates.
+Inference and OCR run on your device. Full content is never uploaded. Evidence
+search sends only a short keyword query to public search APIs; disable it for
+fully offline operation.

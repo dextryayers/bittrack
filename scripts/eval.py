@@ -24,7 +24,7 @@ def load_engine(path: str):
 
 
 def analyze(lib, handle, text: str):
-    req = json.dumps({"text": text, "lang_hint": "id", "options": {"threshold": 0.5, "include_heuristics": True, "max_claims": 8}})
+    req = json.dumps({"text": text, "lang_hint": "id", "options": {"threshold": 0.5, "include_heuristics": True, "max_claims": 8, "online_evidence": False}})
     ptr = lib.veritas_analyze(handle, req.encode("utf-8"), None, None)
     if not ptr:
         raise RuntimeError("engine returned null")
@@ -93,6 +93,10 @@ def main():
 
     for s in samples:
         resp = analyze(lib, handle, s["text"])
+        if "code" in resp:
+            print(f"engine error on sample: {resp['code']}: {resp['message']}", file=sys.stderr)
+            lib.veritas_free(handle)
+            return 2
         pred = resp.get("verdict", "unverifiable")
         conf = float(resp.get("confidence", 0.0))
         confusion[s["label"]][pred] += 1

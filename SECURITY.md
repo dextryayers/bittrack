@@ -22,7 +22,7 @@ In scope:
 
 - Native engine FFI boundary.
 - Input validation and path handling.
-- Model and fact database integrity.
+- Model download and integrity verification.
 - Local data storage.
 
 Out of scope:
@@ -33,7 +33,10 @@ Out of scope:
 
 ## Design Guarantees
 
-- No backend and no network in the analysis path.
-- Telemetry is off by default.
+- Inference and OCR run on the device; no content is sent to a backend.
+- Evidence retrieval is optional. When enabled, only a short keyword query is
+  sent to Bing and the Indonesian Wikipedia API; article text, poster text, and
+  comments are not uploaded.
+- Telemetry is off by default and never includes content.
 - Model files are verified by SHA-256 before use.
 - Rust panics are caught at the FFI boundary.

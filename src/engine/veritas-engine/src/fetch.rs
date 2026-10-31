@@ -7,7 +7,7 @@
 
 use std::collections::BTreeSet;
 use std::io::Read;
-use std::net::IpAddr;
+use std::net::{IpAddr, ToSocketAddrs};
 use std::time::Duration;
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -84,9 +84,68 @@ fn client() -> Result<Client, FetchError> {
         ))
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REQUEST_TIMEOUT)
-        .redirect(reqwest::redirect::Policy::limited(5))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if attempt.previous().len() >= 5 || validate_public_url(attempt.url().as_str()).is_err()
+            {
+                attempt.stop()
+            } else {
+                attempt.follow()
+            }
+        }))
         .build()
         .map_err(|e| FetchError::Http(e.to_string()))
+}
+
+fn is_public_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            !(v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_multicast()
+                || v4.octets()[0] == 0)
+        }
+        IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_public_ip(IpAddr::V4(v4));
+            }
+            let segments = v6.segments();
+            !(v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || (segments[0] & 0xfe00) == 0xfc00
+                || (segments[0] & 0xffc0) == 0xfe80)
+        }
+    }
+}
+
+/// Reject hosts that resolve to a non-public address. This blocks hostnames
+/// that point at loopback or private ranges, not just literal IPs.
+fn ensure_public_resolution(url: &Url) -> Result<(), FetchError> {
+    let host = url
+        .host_str()
+        .ok_or_else(|| FetchError::UrlNotAllowed("missing host".into()))?;
+    let port = url.port_or_known_default().unwrap_or(443);
+    let mut addrs = (host, port)
+        .to_socket_addrs()
+        .map_err(|e| FetchError::UrlNotAllowed(format!("cannot resolve {host}: {e}")))?
+        .peekable();
+    if addrs.peek().is_none() {
+        return Err(FetchError::UrlNotAllowed(format!(
+            "cannot resolve {host}: no addresses"
+        )));
+    }
+    for addr in addrs {
+        if !is_public_ip(addr.ip()) {
+            return Err(FetchError::UrlNotAllowed(format!(
+                "{host} resolves to non-public address {}",
+                addr.ip()
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Reject anything that is not a public HTTP(S) endpoint.
@@ -111,17 +170,7 @@ fn validate_public_url(raw: &str) -> Result<Url, FetchError> {
         return Err(FetchError::UrlNotAllowed(host));
     }
     if let Ok(ip) = host.parse::<IpAddr>() {
-        let blocked = match ip {
-            IpAddr::V4(v4) => {
-                v4.is_loopback()
-                    || v4.is_private()
-                    || v4.is_link_local()
-                    || v4.is_unspecified()
-                    || v4.is_broadcast()
-            }
-            IpAddr::V6(v6) => v6.is_loopback() || v6.is_unspecified(),
-        };
-        if blocked {
+        if !is_public_ip(ip) {
             return Err(FetchError::UrlNotAllowed(host));
         }
     }
@@ -148,6 +197,7 @@ fn meta_content(doc: &Html, selector: &str) -> Option<String> {
 /// Fetch a URL and extract the main article text.
 pub fn fetch_page(raw_url: &str) -> Result<FetchedPage, FetchError> {
     let url = validate_public_url(raw_url)?;
+    ensure_public_resolution(&url)?;
     let resp = client()?
         .get(url.clone())
         .send()
@@ -156,6 +206,9 @@ pub fn fetch_page(raw_url: &str) -> Result<FetchedPage, FetchError> {
     if !status.is_success() {
         return Err(FetchError::Http(format!("status {status}")));
     }
+    let final_url = resp.url().clone();
+    ensure_public_resolution(&final_url)?;
+    let final_url = final_url.to_string();
     let content_type = resp
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
@@ -169,7 +222,6 @@ pub fn fetch_page(raw_url: &str) -> Result<FetchedPage, FetchError> {
     {
         return Err(FetchError::ContentType(content_type));
     }
-    let final_url = resp.url().to_string();
     let mut bytes = Vec::new();
     resp.take(MAX_PAGE_BYTES)
         .read_to_end(&mut bytes)
@@ -233,6 +285,7 @@ pub fn extract_article(html: &str, page_url: &str) -> FetchedPage {
         .collect();
     let mut chunks: Vec<String> = Vec::new();
     let mut seen: BTreeSet<String> = BTreeSet::new();
+    let mut total_chars = 0usize;
     for root in roots {
         for p in root.select(&paragraph_sel) {
             let text = text_of(p);
@@ -243,12 +296,13 @@ pub fn extract_article(html: &str, page_url: &str) -> FetchedPage {
             let key = text.to_lowercase();
             if seen.insert(key) {
                 chunks.push(text);
+                total_chars += len + 1;
             }
-            if chunks.join(" ").chars().count() >= MAX_ARTICLE_CHARS {
+            if total_chars >= MAX_ARTICLE_CHARS {
                 break;
             }
         }
-        if chunks.join(" ").chars().count() >= 400 {
+        if total_chars >= 400 {
             break;
         }
     }
@@ -382,7 +436,8 @@ fn source_name(url: &Url) -> String {
 /// Decode Bing's `ck/a?...&u=a1<base64url>` redirect into the target URL.
 fn decode_bing_target(href: &str) -> Option<String> {
     let url = Url::parse(href).ok()?;
-    if !url.host_str()?.ends_with("bing.com") {
+    let host = url.host_str()?;
+    if host != "bing.com" && !host.ends_with(".bing.com") {
         return None;
     }
     let encoded = url
@@ -495,7 +550,8 @@ pub fn wikipedia_search(query: &str, limit: usize) -> Result<Vec<SearchHit>, Fet
             if title.is_empty() || snippet.is_empty() {
                 continue;
             }
-            let encoded_title = urlencoding::encode(&title.replace(' ', "_"));
+            let normalized_title = title.replace(' ', "_");
+            let encoded_title = urlencoding::encode(&normalized_title);
             let page_url = format!("https://id.wikipedia.org/wiki/{encoded_title}");
             let score = relevance(&query_tokens, &title, &snippet);
             if score < 0.15 {
@@ -568,6 +624,30 @@ mod tests {
         assert!(validate_public_url("http://localhost/x").is_err());
         assert!(validate_public_url("file:///etc/passwd").is_err());
         assert!(validate_public_url("https://example.com/x").is_ok());
+    }
+
+    #[test]
+    fn classifies_public_and_private_addresses() {
+        assert!(is_public_ip("8.8.8.8".parse().unwrap()));
+        assert!(!is_public_ip("127.0.0.1".parse().unwrap()));
+        assert!(!is_public_ip("10.1.2.3".parse().unwrap()));
+        assert!(!is_public_ip("192.168.1.1".parse().unwrap()));
+        assert!(!is_public_ip("169.254.169.254".parse().unwrap()));
+        assert!(!is_public_ip("::1".parse().unwrap()));
+        assert!(!is_public_ip("fd00::1".parse().unwrap()));
+        assert!(!is_public_ip("::ffff:127.0.0.1".parse().unwrap()));
+    }
+
+    #[test]
+    fn decodes_only_bing_redirects() {
+        let payload = URL_SAFE_NO_PAD.encode("https://turnbackhoax.id/artikel");
+        let href = format!("https://www.bing.com/ck/a?u=a1{payload}");
+        assert_eq!(
+            decode_bing_target(&href).as_deref(),
+            Some("https://turnbackhoax.id/artikel")
+        );
+        assert!(decode_bing_target("https://evilbing.com/ck/a?u=a1abc").is_none());
+        assert!(decode_bing_target("https://example.com/x").is_none());
     }
 
     #[test]

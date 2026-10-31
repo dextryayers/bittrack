@@ -6,7 +6,7 @@
 //! of free-form prose. Generation runs on the caller's thread and honours a
 //! cooperative cancellation flag and a hard wall-clock deadline.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -19,10 +19,6 @@ use llama_cpp_2::sampling::LlamaSampler;
 use llama_cpp_2::json_schema_to_grammar;
 use thiserror::Error;
 
-/// Default context window.
-pub const DEFAULT_CONTEXT_TOKENS: u32 = 8192;
-/// Default generation cap.
-pub const DEFAULT_MAX_OUTPUT_TOKENS: u32 = 1200;
 /// Hard ceiling for a single generation.
 const GENERATION_DEADLINE: Duration = Duration::from_secs(300);
 
@@ -32,9 +28,6 @@ pub enum LlmError {
     /// The GGUF file does not exist.
     #[error("model file not found: {0}")]
     ModelMissing(String),
-    /// The llama.cpp backend could not be initialized.
-    #[error("llama backend: {0}")]
-    Backend(String),
     /// The GGUF file could not be loaded.
     #[error("model load failed: {0}")]
     Load(String),
@@ -116,7 +109,6 @@ pub const OUTPUT_SCHEMA: &str = r#"{
 pub struct Llm {
     model: LlamaModel,
     template: Option<LlamaChatTemplate>,
-    path: PathBuf,
     threads: i32,
     n_ctx: u32,
     n_batch: u32,
@@ -144,23 +136,10 @@ impl Llm {
         Ok(Self {
             model,
             template,
-            path: path.to_path_buf(),
             threads: threads.clamp(1, 16),
             n_ctx: n_ctx.clamp(1024, 32768),
             n_batch: 512,
         })
-    }
-
-    /// Absolute path of the loaded model.
-    #[must_use]
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
-    /// Context window in tokens.
-    #[must_use]
-    pub fn context_tokens(&self) -> u32 {
-        self.n_ctx
     }
 
     /// Generate a JSON object constrained by [`OUTPUT_SCHEMA`].

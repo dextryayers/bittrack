@@ -32,22 +32,37 @@ pub fn domain_score(text: &str) -> f64 {
 }
 
 fn domain_score_for_url(url: &str) -> f64 {
-    let lower = url.to_lowercase();
-    for s in SHORTENERS {
-        if lower.contains(s) {
-            return 0.2;
-        }
+    let Some(host) = host_of(url) else {
+        return 0.5;
+    };
+    if SHORTENERS
+        .iter()
+        .any(|s| host == *s || host.ends_with(&format!(".{s}")))
+    {
+        return 0.2;
     }
-    for t in TRUSTED {
-        if lower.contains(t) {
-            return 0.95;
-        }
+    if TRUSTED
+        .iter()
+        .any(|t| host == *t || host.ends_with(&format!(".{t}")))
+    {
+        return 0.95;
     }
-    // suspicious TLDs
-    if lower.contains(".xyz") || lower.contains(".top") || lower.contains(".click") {
+    if [".xyz", ".top", ".click"].iter().any(|tld| host.ends_with(tld)) {
         return 0.25;
     }
     0.5
+}
+
+fn host_of(raw: &str) -> Option<String> {
+    let normalized = if raw.starts_with("http://") || raw.starts_with("https://") {
+        raw.to_string()
+    } else {
+        format!("https://{}", raw.trim_start_matches("www."))
+    };
+    reqwest::Url::parse(&normalized)
+        .ok()?
+        .host_str()
+        .map(|h| h.to_ascii_lowercase())
 }
 
 /// Extract URLs from text.
@@ -130,7 +145,8 @@ pub fn collect_signals(text: &str) -> Vec<String> {
     }
     if extract_urls(text)
         .iter()
-        .any(|u| SHORTENERS.iter().any(|s| u.contains(s)))
+        .filter_map(|u| host_of(u))
+        .any(|host| SHORTENERS.iter().any(|s| host == *s || host.ends_with(&format!(".{s}"))))
     {
         sigs.push("url_shortener".into());
     }
@@ -159,6 +175,11 @@ mod tests {
     #[test]
     fn shortener_scores_low() {
         assert!(domain_score("lihat https://bit.ly/abc") < 0.3);
+    }
+
+    #[test]
+    fn lookalike_domain_is_not_trusted() {
+        assert!(domain_score("baca di https://kompas.com.evil.example/berita") < 0.6);
     }
 
     #[test]

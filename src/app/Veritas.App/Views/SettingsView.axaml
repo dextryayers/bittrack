@@ -4,26 +4,50 @@
              x:Class="Veritas.App.Views.SettingsView"
              x:DataType="vm:MainViewModel">
     <ScrollViewer>
-        <StackPanel Margin="32" Spacing="20" MaxWidth="720" HorizontalAlignment="Center">
+        <StackPanel Margin="32" Spacing="20" MaxWidth="760" HorizontalAlignment="Center">
             <StackPanel Spacing="4">
                 <TextBlock Text="Pengaturan" Classes="h1" />
-                <TextBlock Text="Konfigurasi model, ambang keputusan, bahasa, dan tampilan." Classes="muted" />
+                <TextBlock Text="Model GGUF, bukti daring, ambang keputusan, bahasa, dan tampilan." Classes="muted" />
             </StackPanel>
 
             <Border Classes="card">
                 <StackPanel Spacing="16">
-                    <TextBlock Text="Model" Classes="h2" />
-                    <TextBlock Text="Model GGUF yang digunakan untuk inferensi lokal." Classes="muted" FontSize="12" />
-                    <ComboBox ItemsSource="{Binding ModelOptions}" SelectedItem="{Binding Settings.ModelId}" Width="360" HorizontalAlignment="Left" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="Model" Classes="h2" VerticalAlignment="Center" />
+                        <Button Content="Segarkan" Classes="ghost" Command="{Binding RefreshModelsCommand}" IsEnabled="{Binding !IsDownloading}" />
+                    </StackPanel>
+                    <TextBlock Text="Model berjalan sepenuhnya lokal. Unduhan diverifikasi SHA-256 dan bisa dilanjutkan."
+                               Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}" Width="420" HorizontalAlignment="Left">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding DownloadState}" Classes="muted" FontSize="11" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock Text="{Binding SelectedModel.Path}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Content="Unduh / lanjutkan model" Classes="primary"
+                                Command="{Binding DownloadModelCommand}"
+                                IsEnabled="{Binding !IsDownloading}" />
+                        <ProgressBar IsVisible="{Binding IsDownloading}" Minimum="0" Maximum="100"
+                                     Value="{Binding DownloadPercent}" Width="220" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding Status}" Classes="muted" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
 
             <Border Classes="card">
                 <StackPanel Spacing="16">
                     <TextBlock Text="Ambang keputusan" Classes="h2" />
-                    <TextBlock Text="Semakin tinggi ambang, semakin konservatif verdict yang dihasilkan." Classes="muted" FontSize="12" />
+                    <TextBlock Text="Jika keyakinan model di bawah ambang ini, hasil ditandai tidak dapat diverifikasi."
+                               Classes="muted" FontSize="12" TextWrapping="Wrap" />
                     <Slider x:Name="ThresholdSlider" Minimum="0" Maximum="1" Value="{Binding Settings.Threshold}" Width="360" HorizontalAlignment="Left" />
                     <TextBlock Text="{Binding #ThresholdSlider.Value, StringFormat='Threshold: {0:F2}'}" Classes="muted" />
+                    <CheckBox Content="Cari bukti daring (cek fakta dan Wikipedia)" IsChecked="{Binding Settings.OnlineEvidence}" />
                 </StackPanel>
             </Border>
 
@@ -48,12 +72,13 @@
                 <StackPanel Spacing="12">
                     <TextBlock Text="Privasi" Classes="h2" />
                     <CheckBox Content="Aktifkan telemetri anonim (opt-in, tanpa konten)" IsChecked="{Binding Settings.TelemetryEnabled}" />
-                    <TextBlock Text="Secara default, tidak ada data yang dikirim keluar. Inferensi berjalan sepenuhnya lokal." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    <TextBlock Text="Inferensi berjalan lokal. Hanya pencarian bukti yang mengirim kata kunci ke mesin pencari publik; teks lengkap tidak dikirim."
+                               Classes="muted" FontSize="12" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
 
             <Button Content="Simpan pengaturan" Classes="primary" Command="{Binding SaveSettingsCommand}" HorizontalAlignment="Left" />
-            <TextBlock Text="{Binding Status}" Classes="muted" />
+            <TextBlock Text="{Binding Status}" Classes="muted" TextWrapping="Wrap" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>

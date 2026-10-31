@@ -58,11 +58,14 @@ impl Verdict {
 /// Request payload from the UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalyzeRequest {
-    /// Raw article text. Required if `url` and `poster_text` are empty.
+    /// Raw article text. Required unless `url`, `poster_text`, or `comments` is
+    /// present.
     pub text: Option<String>,
-    /// Article URL. Required if `text` and `poster_text` are empty.
+    /// Article URL. Required unless `text`, `poster_text`, or `comments` is
+    /// present.
     pub url: Option<String>,
-    /// Reader comments to include as additional context.
+    /// Reader comments to include as additional context. When no other input is
+    /// present, the comments become the claim under review.
     #[serde(default)]
     pub comments: Option<String>,
     /// Text extracted from an uploaded poster image.
@@ -77,6 +80,7 @@ pub struct AnalyzeRequest {
 
 /// Options for analysis.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AnalyzeOptions {
     /// Minimum model confidence 0.0..=1.0 required before a decisive verdict is
     /// accepted. Lower confidence results are reported as `unverifiable`.
@@ -329,6 +333,19 @@ mod tests {
             url: None,
             comments: None,
             poster_text: Some("VIRAL vaksin microchip".into()),
+            lang_hint: "id".into(),
+            options: Some(AnalyzeOptions::default()),
+        };
+        assert!(validate_request(&req).is_ok());
+    }
+
+    #[test]
+    fn validate_accepts_comments_only() {
+        let req = AnalyzeRequest {
+            text: None,
+            url: None,
+            comments: Some("Kata teman saya vaksin ini berbahaya.".into()),
+            poster_text: None,
             lang_hint: "id".into(),
             options: Some(AnalyzeOptions::default()),
         };
