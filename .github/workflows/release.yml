@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            runtime: win-x64
+            engine: veritas_engine.dll
+          - os: ubuntu-latest
+            runtime: linux-x64
+            engine: libveritas_engine.so
+          - os: macos-latest
+            runtime: osx-x64
+            engine: libveritas_engine.dylib
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Rust engine
+        working-directory: src/engine
+        run: cargo build --release --workspace
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish app
+        run: >
+          dotnet publish src/app/Veritas.App/Veritas.App.csproj
+          -c Release -r ${{ matrix.runtime }} --self-contained true
+          -o artifacts/${{ matrix.runtime }}
+
+      - name: Copy native engine
+        shell: bash
+        run: cp "src/engine/target/release/${{ matrix.engine }}" "artifacts/${{ matrix.runtime }}/"
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          cd artifacts
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            7z a "Veritas-${{ matrix.runtime }}.zip" "${{ matrix.runtime }}/*"
+          else
+            tar -czf "Veritas-${{ matrix.runtime }}.tar.gz" "${{ matrix.runtime }}"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Veritas-${{ matrix.runtime }}
+          path: artifacts/Veritas-${{ matrix.runtime }}.*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

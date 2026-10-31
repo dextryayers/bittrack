@@ -1,0 +1,69 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Veritas.App.ViewModels"
+             x:Class="Veritas.App.Views.SettingsView"
+             x:DataType="vm:MainViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="32" Spacing="20" MaxWidth="720" HorizontalAlignment="Center">
+            <StackPanel Spacing="4">
+                <TextBlock Text="Pengaturan" Classes="h1" />
+                <TextBlock Text="Konfigurasi model, ambang keputusan, bahasa, dan tampilan." Classes="muted" />
+            </StackPanel>
+
+            <Border Classes="card">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Model" Classes="h2" />
+                    <TextBlock Text="Model GGUF yang digunakan untuk inferensi lokal." Classes="muted" FontSize="12" />
+                    <ComboBox SelectedItem="{Binding Settings.ModelId}" Width="360" HorizontalAlignment="Left">
+                        <ComboBoxItem Content="qwen2.5-3b-q4" />
+                        <ComboBoxItem Content="qwen2.5-7b-q4" />
+                    </ComboBox>
+                </StackPanel>
+            </Border>
+
+            <Border Classes="card">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Ambang keputusan" Classes="h2" />
+                    <TextBlock Text="Semakin tinggi ambang, semakin konservatif verdict yang dihasilkan." Classes="muted" FontSize="12" />
+                    <Slider Minimum="0" Maximum="1" Value="{Binding Settings.Threshold}" Width="360" HorizontalAlignment="Left" />
+                    <TextBlock Text="{Binding Settings.Threshold, StringFormat='Threshold: {0:F2}'}" Classes="muted" />
+                </StackPanel>
+            </Border>
+
+            <Border Classes="card">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Bahasa dan tampilan" Classes="h2" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Bahasa" Classes="label" />
+                            <ComboBox SelectedItem="{Binding Settings.Language}" Width="180">
+                                <ComboBoxItem Content="id" />
+                                <ComboBoxItem Content="en" />
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Tema" Classes="label" />
+                            <ComboBox SelectedItem="{Binding Settings.Theme}" Width="180">
+                                <ComboBoxItem Content="system" />
+                                <ComboBoxItem Content="light" />
+                                <ComboBoxItem Content="dark" />
+                            </ComboBox>
+                        </StackPanel>
+                    </StackPanel>
+                    <Button Content="Ganti tema sekarang" Classes="ghost" Command="{Binding ToggleThemeCommand}" HorizontalAlignment="Left" />
+                </StackPanel>
+            </Border>
+
+            <Border Classes="card">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Privasi" Classes="h2" />
+                    <CheckBox Content="Aktifkan telemetri anonim (opt-in, tanpa konten)" IsChecked="{Binding Settings.TelemetryEnabled}" />
+                    <TextBlock Text="Secara default, tidak ada data yang dikirim keluar. Inferensi berjalan sepenuhnya lokal." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Button Content="Simpan pengaturan" Classes="primary" Command="{Binding SaveSettingsCommand}" HorizontalAlignment="Left" />
+            <TextBlock Text="{Binding Status}" Classes="muted" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

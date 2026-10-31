@@ -186,9 +186,49 @@ pub fn aggregate(
     };
     // threshold gate
     if adjusted < threshold {
-        return (veritas_core::Verdict::Unverifiable, adjusted);
+        return (veritas_core::Verdict::Unverifiable, calibrate(adjusted, 0.4));
     }
-    (verdict, adjusted.min(1.0))
+    (verdict, calibrate(adjusted, 0.4))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trusted_domain_scores_high() {
+        assert!(domain_score("baca di https://kompas.com/berita") > 0.9);
+    }
+
+    #[test]
+    fn shortener_scores_low() {
+        assert!(domain_score("lihat https://bit.ly/abc") < 0.3);
+    }
+
+    #[test]
+    fn buzzer_imperatives_detected() {
+        assert!(buzzer_score("SHARE SEKARANG!!! VIRALKAN!!!") >= 0.5);
+    }
+
+    #[test]
+    fn clickbait_detected() {
+        assert!(clickbait_score("Viral! Gila! Mencengangkan!") >= 0.4);
+    }
+
+    #[test]
+    fn neutral_text_has_low_signals() {
+        let h = build_heuristics("Cuaca hari ini diperkirakan cerah di sebagian besar wilayah");
+        assert!(h.buzzer_score < 0.5);
+        assert!(h.clickbait_score < 0.5);
+    }
+
+    #[test]
+    fn abstains_without_claims() {
+        let h = build_heuristics("teks");
+        let (v, c) = aggregate(&[], &h, 0.5, 0.4);
+        assert_eq!(v, veritas_core::Verdict::Unverifiable);
+        assert_eq!(c, 0.0);
+    }
 }
 
 /// Temperature scaling for calibration (placeholder T=1.0).

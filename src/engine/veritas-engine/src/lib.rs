@@ -436,10 +436,31 @@ fn classify_with_rag(claim: &str, rag_verdict: Option<&str>, _threshold: f64) ->
     }
     // fallback heuristic
     let lower = claim.to_lowercase();
-    let hoax_keywords = ["hoax", "bohong", "palsu", "fitnah", "disinformasi", "viralkan"];
+    let clickbait_keywords = [
+        "viral", "gila", "mencengangkan", "rahasia", "terkejut", "tercengang",
+        "bikin kaget", "tidak akan percaya", "baca sampai habis",
+    ];
+    let clickbait_hits = clickbait_keywords.iter().filter(|k| lower.contains(*k)).count();
+    if clickbait_hits > 0 {
+        return (
+            Verdict::Clickbait,
+            (0.6 + 0.05 * clickbait_hits as f64).min(0.9),
+            "Heuristic: clickbait pattern detected.".into(),
+        );
+    }
+    let hoax_keywords = ["hoax", "bohong", "palsu", "fitnah", "disinformasi"];
     let valid_keywords = ["menurut", "data", "penelitian", "resmi", "konfirmasi"];
+    let buzzer_keywords = ["share", "viralkan", "sebarkan", "bagikan", "forward"];
     let hoax_hits = hoax_keywords.iter().filter(|k| lower.contains(*k)).count();
     let valid_hits = valid_keywords.iter().filter(|k| lower.contains(*k)).count();
+    let buzzer_hits = buzzer_keywords.iter().filter(|k| lower.contains(*k)).count();
+    if buzzer_hits > hoax_hits.max(valid_hits) {
+        return (
+            Verdict::Buzzer,
+            (0.6 + 0.05 * buzzer_hits as f64).min(0.9),
+            "Heuristic: buzzer imperative pattern detected.".into(),
+        );
+    }
     if hoax_hits > valid_hits {
         (Verdict::Hoax, (0.55 + 0.05 * hoax_hits as f64).min(0.9), "Heuristic: hoax keywords detected.".into())
     } else if valid_hits > hoax_hits {

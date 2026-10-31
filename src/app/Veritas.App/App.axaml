@@ -3,13 +3,174 @@
              x:Class="Veritas.App.App"
              xmlns:local="using:Veritas.App"
              RequestedThemeVariant="Default">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
 
     <Application.DataTemplates>
         <local:ViewLocator />
     </Application.DataTemplates>
 
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="AppBackgroundBrush" Color="#F5F7FB" />
+                    <SolidColorBrush x:Key="SidebarBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="CardBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="CardAltBrush" Color="#F0F3F9" />
+                    <SolidColorBrush x:Key="StrokeBrush" Color="#E1E6EF" />
+                    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#0B1526" />
+                    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#5A6B85" />
+                    <SolidColorBrush x:Key="AccentBrush" Color="#E01E2B" />
+                    <SolidColorBrush x:Key="AccentSoftBrush" Color="#FDE8EA" />
+                    <SolidColorBrush x:Key="NavyBrush" Color="#0B1526" />
+                    <SolidColorBrush x:Key="SuccessBrush" Color="#12855B" />
+                    <SolidColorBrush x:Key="WarningBrush" Color="#B26A00" />
+                    <SolidColorBrush x:Key="DangerBrush" Color="#C81E2B" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="AppBackgroundBrush" Color="#080C14" />
+                    <SolidColorBrush x:Key="SidebarBrush" Color="#0D1320" />
+                    <SolidColorBrush x:Key="CardBrush" Color="#111A2B" />
+                    <SolidColorBrush x:Key="CardAltBrush" Color="#162136" />
+                    <SolidColorBrush x:Key="StrokeBrush" Color="#22304A" />
+                    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F2F5FA" />
+                    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#93A3BC" />
+                    <SolidColorBrush x:Key="AccentBrush" Color="#FF3B47" />
+                    <SolidColorBrush x:Key="AccentSoftBrush" Color="#2A1218" />
+                    <SolidColorBrush x:Key="NavyBrush" Color="#0B1526" />
+                    <SolidColorBrush x:Key="SuccessBrush" Color="#34D399" />
+                    <SolidColorBrush x:Key="WarningBrush" Color="#FBBF24" />
+                    <SolidColorBrush x:Key="DangerBrush" Color="#FF5A66" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
     <Application.Styles>
         <FluentTheme />
+
+        <Style Selector="Window">
+            <Setter Property="Background" Value="{DynamicResource AppBackgroundBrush}" />
+            <Setter Property="FontFamily" Value="avares://Avalonia.Fonts.Inter/Assets#Inter" />
+        </Style>
+
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        </Style>
+
+        <Style Selector="TextBlock.muted">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        </Style>
+
+        <Style Selector="TextBlock.h1">
+            <Setter Property="FontSize" Value="28" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+
+        <Style Selector="TextBlock.h2">
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        </Style>
+
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="Padding" Value="20" />
+            <Setter Property="BoxShadow" Value="0 8 24 0 #14000000" />
+        </Style>
+
+        <Style Selector="Border.cardAlt">
+            <Setter Property="Background" Value="{DynamicResource CardAltBrush}" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="12" />
+        </Style>
+
+        <Style Selector="Button">
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="18,9" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" />
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+
+        <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
+        </Style>
+
+        <Style Selector="Button.ghost">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        </Style>
+
+        <Style Selector="Button.ghost:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource CardAltBrush}" />
+        </Style>
+
+        <Style Selector="TextBox">
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="14" />
+            <Setter Property="Background" Value="{DynamicResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        </Style>
+
+        <Style Selector="ComboBox">
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="Background" Value="{DynamicResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource StrokeBrush}" />
+        </Style>
+
+        <Style Selector="ListBox">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <Style Selector="ListBoxItem.nav">
+            <Setter Property="Padding" Value="14,12" />
+            <Setter Property="Margin" Value="0,2" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15" />
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <Style Selector="ListBoxItem.nav:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource CardAltBrush}" />
+        </Style>
+
+        <Style Selector="ListBoxItem.nav:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+        </Style>
+
+        <Style Selector="ProgressBar">
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Height" Value="8" />
+        </Style>
+
+        <Style Selector="Slider">
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+        </Style>
     </Application.Styles>
 </Application>

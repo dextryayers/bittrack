@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Veritas.App.ViewModels"
+             x:Class="Veritas.App.Views.AboutView"
+             x:DataType="vm:MainViewModel">
+    <Grid Margin="32">
+        <StackPanel Spacing="16" MaxWidth="560" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Border Width="120" Height="120" CornerRadius="28" Background="{DynamicResource CardBrush}" Padding="12" HorizontalAlignment="Center">
+                <Image Source="/Assets/logo.png" />
+            </Border>
+            <TextBlock Text="Veritas" Classes="h1" HorizontalAlignment="Center" />
+            <TextBlock Text="V1.0-Alpha" Classes="muted" HorizontalAlignment="Center" />
+            <TextBlock Text="Deteksi berita hoax dan buzzer secara lokal. Tanpa backend, tanpa cloud, dan dapat diaudit."
+                       Classes="muted" TextWrapping="Wrap" TextAlignment="Center" />
+            <Border Classes="cardAlt" Padding="16">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Arsitektur" FontWeight="SemiBold" />
+                    <TextBlock Text="C# Avalonia UI + Rust native engine (cdylib) melalui C ABI. Inferensi dan basis fakta berjalan di perangkat." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    <TextBlock Text="Lisensi: MIT OR Apache-2.0" Classes="muted" FontSize="12" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </Grid>
+</UserControl>

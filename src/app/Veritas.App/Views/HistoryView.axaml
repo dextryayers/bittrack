@@ -1,0 +1,37 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Veritas.App.ViewModels"
+             x:Class="Veritas.App.Views.HistoryView"
+             x:DataType="vm:MainViewModel">
+    <Grid Margin="32" RowDefinitions="Auto,*,Auto" MaxWidth="980" HorizontalAlignment="Center">
+        <StackPanel Grid.Row="0" Spacing="12" Margin="0,0,0,20">
+            <TextBlock Text="Riwayat" Classes="h1" />
+            <TextBlock Text="Semua analisis disimpan lokal di perangkat ini." Classes="muted" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button Content="Muat ulang" Classes="ghost" Command="{Binding LoadHistoryCommand}" />
+                <Button Content="Hapus semua" Classes="ghost" Command="{Binding ClearHistoryCommand}" />
+            </StackPanel>
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1">
+            <ItemsControl ItemsSource="{Binding History}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Classes="card" Margin="0,0,0,12">
+                            <StackPanel Spacing="6">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <TextBlock Text="{Binding Verdict}" FontWeight="Bold" />
+                                    <TextBlock Text="{Binding Confidence, StringFormat='{}{0:P0}'}" Classes="muted" />
+                                    <TextBlock Text="{Binding CreatedAt}" FontSize="11" Classes="muted" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <TextBlock Grid.Row="2" Text="{Binding Status}" Classes="muted" Margin="0,12,0,0" />
+    </Grid>
+</UserControl>

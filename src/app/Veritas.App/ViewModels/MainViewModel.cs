@@ -39,9 +39,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private string _resultSummary = string.Empty;
 
     [ObservableProperty]
-    private int _selectedTabIndex;
+    private double _resultOpacity;
+
+    [ObservableProperty]
+    private int _selectedPageIndex;
 
     public ObservableCollection<Claim> ResultClaims { get; } = new();
+    public ObservableCollection<Evidence> ResultEvidence { get; } = new();
+    public ObservableCollection<string> ResultSignals { get; } = new();
     public ObservableCollection<HistoryEntry> History { get; } = new();
 
     public AppSettings Settings { get; }
@@ -70,7 +75,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         IsBusy = true;
         HasResult = false;
+        ResultOpacity = 0;
         ResultClaims.Clear();
+        ResultEvidence.Clear();
+        ResultSignals.Clear();
         Status = "Menganalisis...";
 
         try
@@ -84,7 +92,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 ResultClaims.Add(c);
             }
+            foreach (var e in resp.Evidence)
+            {
+                ResultEvidence.Add(e);
+            }
+            foreach (var s in resp.Heuristics.Signals)
+            {
+                ResultSignals.Add(s);
+            }
             HasResult = true;
+            ResultOpacity = 1;
             Status = "Selesai.";
             _historyService.Add(InputText, resp.Verdict, resp.Confidence, resp.Summary);
             LoadHistory();
@@ -104,7 +121,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         InputText = string.Empty;
         HasResult = false;
+        ResultOpacity = 0;
         ResultClaims.Clear();
+        ResultEvidence.Clear();
+        ResultSignals.Clear();
         Status = "Siap.";
     }
 
@@ -130,6 +150,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         _settingsService.Save(Settings);
         Status = "Pengaturan disimpan.";
+    }
+
+    [RelayCommand]
+    private void ToggleTheme()
+    {
+        var app = Avalonia.Application.Current;
+        if (app is null)
+        {
+            return;
+        }
+        var next = app.RequestedThemeVariant == Avalonia.Styling.ThemeVariant.Dark
+            ? Avalonia.Styling.ThemeVariant.Light
+            : Avalonia.Styling.ThemeVariant.Dark;
+        app.RequestedThemeVariant = next;
+        Settings.Theme = next == Avalonia.Styling.ThemeVariant.Dark ? "dark" : "light";
+        _settingsService.Save(Settings);
     }
 
     public void Dispose()

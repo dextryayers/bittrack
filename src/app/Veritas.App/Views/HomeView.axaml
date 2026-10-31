@@ -1,0 +1,65 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Veritas.App.ViewModels"
+             x:Class="Veritas.App.Views.HomeView"
+             x:DataType="vm:MainViewModel">
+    <Grid Margin="32" RowDefinitions="Auto,Auto,*" MaxWidth="980" HorizontalAlignment="Center">
+        <StackPanel Grid.Row="0" Spacing="8" Margin="0,0,0,24">
+            <StackPanel Orientation="Horizontal" Spacing="16">
+                <Border Width="64" Height="64" CornerRadius="18" Background="{DynamicResource CardBrush}" Padding="8">
+                    <Image Source="/Assets/logo.png" />
+                </Border>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Veritas" Classes="h1" />
+                    <TextBlock Text="Deteksi berita hoax dan buzzer secara lokal" Classes="muted" />
+                </StackPanel>
+            </StackPanel>
+            <TextBlock Text="Tempel teks berita, lalu dapatkan verdict, confidence, klaim, dan bukti dari basis fakta lokal."
+                       Classes="muted" TextWrapping="Wrap" Margin="0,8,0,0" />
+        </StackPanel>
+
+        <Border Grid.Row="1" Classes="card">
+            <StackPanel Spacing="16">
+                <TextBlock Text="Teks berita" Classes="label" />
+                <TextBox Text="{Binding InputText}"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         MinHeight="200"
+                         PlaceholderText="Paste teks berita atau artikel di sini..." />
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Button Content="Analisis sekarang" Classes="primary" Command="{Binding AnalyzeCommand}" IsEnabled="{Binding !IsBusy}" />
+                    <Button Content="Bersihkan" Classes="ghost" Command="{Binding ClearCommand}" />
+                    <ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="True" Width="200" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock Text="{Binding Status}" Classes="muted" />
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="2" Margin="0,24,0,0" Spacing="12">
+            <TextBlock Text="Cara kerja" Classes="h2" />
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
+                <Border Grid.Column="0" Classes="cardAlt">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="01" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
+                        <TextBlock Text="Normalisasi dan ekstraksi klaim" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="Input dibersihkan dan dipecah menjadi klaim yang dapat diverifikasi." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="1" Classes="cardAlt">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="02" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
+                        <TextBlock Text="Retrieval basis fakta lokal" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="Klaim dicocokkan dengan basis fakta terverifikasi menggunakan embedding lokal." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Classes="cardAlt">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="03" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
+                        <TextBlock Text="Klasifikasi dan agregasi" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="Verdict, confidence, dan sinyal buzzer dihitung dengan bobot yang dapat diaudit." Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </Grid>
+</UserControl>

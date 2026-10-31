@@ -1,160 +1,59 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Veritas.App.ViewModels"
+        xmlns:views="using:Veritas.App.Views"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="1024" d:DesignHeight="768"
+        mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="780"
         x:Class="Veritas.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/logo.png"
         Title="Veritas - Hoax &amp; Buzzer Detector"
-        Width="1024" Height="768">
+        Width="1100" Height="780"
+        MinWidth="900" MinHeight="640">
 
     <Design.DataContext>
         <vm:MainViewModel />
     </Design.DataContext>
 
-    <TabControl SelectedIndex="{Binding SelectedTabIndex}">
-        <!-- Home -->
-        <TabItem Header="Beranda">
-            <Grid Margin="24" RowDefinitions="Auto,Auto,*,Auto">
-                <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12" Margin="0,0,0,16">
-                    <Image Source="/Assets/logo.png" Width="48" Height="48" />
-                    <StackPanel>
-                        <TextBlock Text="Veritas" FontSize="26" FontWeight="Bold" />
-                        <TextBlock Text="Deteksi berita hoax dan buzzer secara lokal, tanpa backend" FontSize="12" Opacity="0.7" />
+    <Grid ColumnDefinitions="260,*">
+        <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}"
+                BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="0,0,1,0">
+            <Grid RowDefinitions="Auto,*,Auto" Margin="18">
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12" Margin="4,8,0,24">
+                    <Border Width="44" Height="44" CornerRadius="12" Background="{DynamicResource CardBrush}" Padding="4">
+                        <Image Source="/Assets/logo.png" />
+                    </Border>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Veritas" FontSize="18" FontWeight="Bold" />
+                        <TextBlock Text="V1.0-Alpha" FontSize="10" Classes="muted" />
                     </StackPanel>
                 </StackPanel>
 
-                <TextBox Grid.Row="1" Text="{Binding InputText}"
-                         AcceptsReturn="True" TextWrapping="Wrap"
-                         MinHeight="180"
-                         PlaceholderText="Paste teks berita atau artikel di sini..." />
-
-                <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12" Margin="0,12,0,0">
-                    <Button Content="Analisis" Command="{Binding AnalyzeCommand}" IsEnabled="{Binding !IsBusy}" Padding="20,8" />
-                    <Button Content="Bersihkan" Command="{Binding ClearCommand}" Padding="20,8" />
-                    <ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="True" Width="220" />
-                </StackPanel>
-
-                <TextBlock Grid.Row="3" Text="{Binding Status}" Opacity="0.8" Margin="0,8,0,0" />
-            </Grid>
-        </TabItem>
-
-        <!-- Analyze -->
-        <TabItem Header="Analisis">
-            <Grid Margin="24" RowDefinitions="Auto,*,Auto">
-                <TextBlock Grid.Row="0" Text="Hasil Analisis" FontSize="20" FontWeight="Bold" Margin="0,0,0,12" />
-
-                <ScrollViewer Grid.Row="1">
-                    <StackPanel Spacing="12">
-                        <Border BorderBrush="#333" BorderThickness="1" CornerRadius="8" Padding="16"
-                                IsVisible="{Binding HasResult}">
-                            <StackPanel Spacing="8">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBlock Text="Verdict:" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding ResultVerdict}" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding ResultConfidence, StringFormat='({0:P0})'}" />
-                                </StackPanel>
-                                <TextBlock Text="{Binding ResultSummary}" TextWrapping="Wrap" />
-                                <TextBlock Text="Klaim:" FontWeight="Bold" Margin="0,8,0,0" />
-                                <ItemsControl ItemsSource="{Binding ResultClaims}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Margin="0,4" Padding="8" CornerRadius="4" Background="#11111111">
-                                                <StackPanel>
-                                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
-                                                    <TextBlock Text="{Binding Verdict}" FontSize="11" Opacity="0.7" />
-                                                    <TextBlock Text="{Binding Reasoning}" FontSize="11" Opacity="0.6" TextWrapping="Wrap" />
-                                                </StackPanel>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
-                        </Border>
-                        <TextBlock Text="{Binding Status}" Opacity="0.8" />
-                    </StackPanel>
-                </ScrollViewer>
-            </Grid>
-        </TabItem>
-
-        <!-- History -->
-        <TabItem Header="Riwayat">
-            <Grid Margin="24" RowDefinitions="Auto,*,Auto">
-                <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12" Margin="0,0,0,12">
-                    <TextBlock Text="Riwayat Analisis" FontSize="20" FontWeight="Bold" />
-                    <Button Content="Muat Ulang" Command="{Binding LoadHistoryCommand}" Padding="12,4" />
-                    <Button Content="Hapus Semua" Command="{Binding ClearHistoryCommand}" Padding="12,4" />
-                </StackPanel>
-                <ListBox Grid.Row="1" ItemsSource="{Binding History}">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Margin="4">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBlock Text="{Binding Verdict}" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding Confidence, StringFormat='({0:P0})'}" />
-                                    <TextBlock Text="{Binding CreatedAt}" FontSize="10" Opacity="0.6" />
-                                </StackPanel>
-                                <TextBlock Text="{Binding Summary}" FontSize="12" TextWrapping="Wrap" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
+                <ListBox Grid.Row="1" SelectedIndex="{Binding SelectedPageIndex}" SelectionMode="Single">
+                    <ListBoxItem Classes="nav" Content="Beranda" />
+                    <ListBoxItem Classes="nav" Content="Analisis" />
+                    <ListBoxItem Classes="nav" Content="Riwayat" />
+                    <ListBoxItem Classes="nav" Content="Pengaturan" />
+                    <ListBoxItem Classes="nav" Content="Tentang" />
                 </ListBox>
-            </Grid>
-        </TabItem>
 
-        <!-- Settings -->
-        <TabItem Header="Pengaturan">
-            <Grid Margin="24" RowDefinitions="Auto,*,Auto">
-                <TextBlock Grid.Row="0" Text="Pengaturan" FontSize="20" FontWeight="Bold" Margin="0,0,0,12" />
-                <ScrollViewer Grid.Row="1">
-                    <StackPanel Spacing="16" MaxWidth="600">
-                        <StackPanel>
-                            <TextBlock Text="Model" FontWeight="Bold" />
-                            <ComboBox SelectedItem="{Binding Settings.ModelId}" Width="320">
-                                <ComboBoxItem Content="qwen2.5-3b-q4" />
-                                <ComboBoxItem Content="qwen2.5-7b-q4" />
-                            </ComboBox>
-                        </StackPanel>
-                        <StackPanel>
-                            <TextBlock Text="Threshold" FontWeight="Bold" />
-                            <Slider Minimum="0" Maximum="1" Value="{Binding Settings.Threshold}" Width="320" />
-                            <TextBlock Text="{Binding Settings.Threshold, StringFormat='{}{0:F2}'}" />
-                        </StackPanel>
-                        <StackPanel>
-                            <TextBlock Text="Bahasa" FontWeight="Bold" />
-                            <ComboBox SelectedItem="{Binding Settings.Language}" Width="320">
-                                <ComboBoxItem Content="id" />
-                                <ComboBoxItem Content="en" />
-                            </ComboBox>
-                        </StackPanel>
-                        <StackPanel>
-                            <TextBlock Text="Tema" FontWeight="Bold" />
-                            <ComboBox SelectedItem="{Binding Settings.Theme}" Width="320">
-                                <ComboBoxItem Content="system" />
-                                <ComboBoxItem Content="light" />
-                                <ComboBoxItem Content="dark" />
-                            </ComboBox>
-                        </StackPanel>
-                        <CheckBox Content="Aktifkan telemetri anonim (opt-in)" IsChecked="{Binding Settings.TelemetryEnabled}" />
-                        <Button Content="Simpan" Command="{Binding SaveSettingsCommand}" Padding="20,8" />
-                    </StackPanel>
-                </ScrollViewer>
-            </Grid>
-        </TabItem>
-
-        <!-- About -->
-        <TabItem Header="Tentang">
-            <Grid Margin="24">
-                <StackPanel Spacing="12" HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <Image Source="/Assets/logo.png" Width="96" Height="96" />
-                    <TextBlock Text="Veritas" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" />
-                    <TextBlock Text="V1.0-Alpha" FontSize="14" Opacity="0.7" HorizontalAlignment="Center" />
-                    <TextBlock Text="Deteksi berita hoax dan buzzer secara lokal. Tanpa backend, tanpa cloud." TextWrapping="Wrap" HorizontalAlignment="Center" />
-                    <TextBlock Text="Lisensi: MIT OR Apache-2.0" FontSize="12" Opacity="0.6" HorizontalAlignment="Center" />
+                <StackPanel Grid.Row="2" Spacing="4" Margin="4,16,0,4">
+                    <TextBlock Text="Offline. Tanpa backend." FontSize="10" Classes="muted" />
+                    <TextBlock Text="MIT OR Apache-2.0" FontSize="10" Classes="muted" />
                 </StackPanel>
             </Grid>
-        </TabItem>
-    </TabControl>
+        </Border>
+
+        <Carousel Grid.Column="1" SelectedIndex="{Binding SelectedPageIndex}">
+            <Carousel.PageTransition>
+                <CrossFade Duration="0:0:0.35" />
+            </Carousel.PageTransition>
+            <views:HomeView />
+            <views:AnalyzeView />
+            <views:HistoryView />
+            <views:SettingsView />
+            <views:AboutView />
+        </Carousel>
+    </Grid>
 </Window>

@@ -6,10 +6,11 @@ V1.0-Alpha.
 
 ## Architecture
 
-- UI: C# + Avalonia (MVVM)
+- UI: C# + Avalonia (MVVM), sidebar navigation, animated transitions, dark/light themes
 - Engine: Rust native library (cdylib) loaded in-process via C ABI
-- Inference: GGUF via llama.cpp (planned in later phases; heuristic baseline in alpha)
-- Storage: SQLite + sqlite-vec (RAG, planned)
+- Retrieval: SQLite fact store with local hashing embeddings and cosine search
+- Heuristics: domain reputation, buzzer patterns, clickbait, calibration, abstain
+- Inference: heuristic and RAG baseline in alpha; GGUF via llama.cpp is feature-gated
 
 See `plan.md` for the full plan.
 
@@ -37,12 +38,30 @@ Copy the native library next to the app binary before running:
 copy src\engine\target\debug\veritas_engine.dll src\app\Veritas.App\bin\Debug\net10.0\
 ```
 
-## Run smoke test
+## Evaluate
 
 ```
-cd src/app/Veritas.Smoke
-dotnet run
+python scripts/eval.py --engine src/engine/target/debug/veritas_engine.dll --dataset data/eval/benchmark.jsonl
+python scripts/bench.py --engine src/engine/target/debug/veritas_engine.dll --dataset data/eval/benchmark.jsonl
 ```
+
+Current benchmark: 36 samples, accuracy 0.972, macro-F1 0.972, ECE 0.072.
+
+## Installers
+
+- Windows: `installer/windows/build.ps1`, Inno Setup script `installer/windows/veritas.iss`
+- macOS: `installer/macos/build.sh`
+- Linux: `installer/linux/build.sh`
+
+## Docs
+
+- `docs/user-guide.md`
+- `docs/faq.md`
+- `docs/model-card.md`
+- `docs/prompt-card.md`
+- `SECURITY.md`
+- `CONTRIBUTING.md`
+- `CHANGELOG.md`
 
 ## License
 
