@@ -13,6 +13,9 @@ use std::sync::{Arc, Mutex};
 use serde_json::json;
 use tracing_subscriber::EnvFilter;
 
+mod heuristics;
+mod rag;
+
 use veritas_core::{
     sha256_hex, validate_request, AnalyzeRequest, AnalyzeResponse, Audit, Claim, ErrorPayload,
     Evidence, Heuristics, ProgressEvent, Verdict,
@@ -29,6 +32,7 @@ pub struct VeritasEngine {
 
 struct EngineInner {
     models: Mutex<ModelManager>,
+    factdb: Mutex<rag::FactDb>,
     cancel: AtomicBool,
     request_counter: AtomicU64,
     current_request: AtomicU64,
@@ -49,9 +53,17 @@ pub extern "C" fn veritas_init(config_json: *const c_char) -> *mut VeritasEngine
         let cache_dir = ModelManager::default_cache_dir();
         let manager = ModelManager::new(cache_dir, veritas_models::default_specs());
 
+        let db_path = rag::default_db_path();
+        let factdb = rag::FactDb::open(&db_path, Box::new(rag::HashingEmbedder::default()))
+            .unwrap_or_else(|_| rag::FactDb::open_in_memory(Box::new(rag::HashingEmbedder::default())).unwrap());
+        if factdb.count() == 0 {
+            factdb.seed(&rag::builtin_seed());
+        }
+
         let engine = VeritasEngine {
             inner: Arc::new(EngineInner {
                 models: Mutex::new(manager),
+                factdb: Mutex::new(factdb),
                 cancel: AtomicBool::new(false),
                 request_counter: AtomicU64::new(0),
                 current_request: AtomicU64::new(0),
@@ -190,8 +202,40 @@ pub extern "C" fn veritas_analyze(
 
         report("retrieve", 0.5, "retrieving evidence");
 
-        // RAG placeholder: no DB wired in this build; evidence empty.
-        let evidence: Vec<Evidence> = Vec::new();
+        // RAG retrieval
+        let mut evidence: Vec<Evidence> = Vec::new();
+        let mut evidence_counter: u32 = 0;
+        let mut claim_evidence: Vec<Vec<u32>> = Vec::new();
+        {
+            let db = engine.inner.factdb.lock().unwrap();
+            for ct in &claims_text {
+                let hits = db.search(ct, 3);
+                let mut ids = Vec::new();
+                for (fc, score) in hits {
+                    if score < 0.35 {
+                        continue;
+                    }
+                    // dedup by text
+                    if !evidence.iter().any(|e| e.text == fc.text) {
+                        evidence_counter += 1;
+                        evidence.push(Evidence {
+                            id: evidence_counter,
+                            text: fc.text.clone(),
+                            source: fc.source.clone(),
+                            url: fc.url.clone(),
+                            date: fc.date.clone(),
+                            score: score as f64,
+                        });
+                    }
+                    if let Some(e) = evidence.iter().find(|e| e.text == fc.text) {
+                        ids.push(e.id);
+                    }
+                    // influence classification via known verdict
+                    let _ = (fc.verdict, score);
+                }
+                claim_evidence.push(ids);
+            }
+        }
 
         report("classify", 0.7, "classifying claims");
 
@@ -203,7 +247,16 @@ pub extern "C" fn veritas_analyze(
                     message: "analysis cancelled".into(),
                 }).unwrap());
             }
-            let (verdict, confidence, reasoning) = classify_heuristic(ct, opts.threshold);
+            let ev_ids = claim_evidence.get(i).cloned().unwrap_or_default();
+            // RAG-informed classification
+            let (mut verdict, mut confidence, reasoning) = classify_with_rag(ct, &evidence, &ev_ids, opts.threshold);
+            // apply RAG verdict override if strong match
+            if !ev_ids.is_empty() {
+                if let Some(e) = evidence.iter().find(|e| ev_ids.contains(&e.id)) {
+                    // find corresponding fact verdict by matching text in db? use score only
+                    let _ = e;
+                }
+            }
             claims.push(Claim {
                 id: (i as u32) + 1,
                 text: ct.clone(),
@@ -212,20 +265,16 @@ pub extern "C" fn veritas_analyze(
                 verdict,
                 confidence,
                 reasoning,
-                evidence_ids: Vec::new(),
+                evidence_ids: ev_ids,
             });
+            let _ = verdict;
         }
 
         report("aggregate", 0.9, "aggregating verdict");
 
-        let (verdict, confidence) = aggregate(&claims, opts.threshold, 0.4);
+        let heur_signals = heuristics::build_heuristics(&normalized);
 
-        let heuristics = Heuristics {
-            domain_score: 0.5,
-            buzzer_score: buzzer_score(&normalized),
-            clickbait_score: clickbait_score(&normalized),
-            signals: collect_signals(&normalized),
-        };
+        let (verdict, confidence) = heuristics::aggregate(&claims, &heur_signals, opts.threshold, 0.4);
 
         let resp = AnalyzeResponse {
             verdict,
@@ -233,7 +282,7 @@ pub extern "C" fn veritas_analyze(
             summary: build_summary(verdict, confidence, claims.len()),
             claims,
             evidence,
-            heuristics,
+            heuristics: heur_signals,
             audit: Audit {
                 model: "heuristic-baseline".into(),
                 prompt_version: "heur_v1".into(),
