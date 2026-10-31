@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -21,15 +22,7 @@ namespace Veritas.App.ViewModels;
 
 public partial class MainViewModel : ObservableObject, IDisposable
 {
-    private static readonly string[] KnownModelIds =
-    {
-        "qwen2.5-3b-instruct-q4_k_m",
-        "qwen2.5-7b-instruct-q4_k_m",
-        "qwen2.5-1.5b-instruct-q4_k_m",
-        "qwen2.5-0.5b-instruct-q4_k_m",
-    };
-
-    private readonly NativeEngine _engine;
+    private NativeEngine _engine;
     private readonly HistoryService _historyService;
     private readonly SettingsService _settingsService;
     private Bitmap? _posterPreview;
@@ -65,6 +58,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private int _resultTruthPercentage;
 
     [ObservableProperty]
+    private int _resultAiPercentage;
+
+    [ObservableProperty]
     private string _resultSummary = string.Empty;
 
     [ObservableProperty]
@@ -87,9 +83,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private ModelInfo? _selectedModel;
-
-    [ObservableProperty]
-    private bool _isDownloading;
 
     [ObservableProperty]
     private double _downloadPercent;
@@ -175,10 +168,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void SanitizeSettings()
     {
-        if (!KnownModelIds.Contains(Settings.ModelId))
-        {
-            Settings.ModelId = KnownModelIds[0];
-        }
         if (Settings.Language is not ("id" or "en"))
         {
             Settings.Language = LanguageOptions[0];
@@ -306,6 +295,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ResultVerdict = resp.Verdict;
         ResultConfidence = resp.Confidence;
         ResultTruthPercentage = resp.TruthPercentage;
+        ResultAiPercentage = resp.AiPercentage;
         ResultSummary = resp.Summary;
         foreach (var claim in resp.Claims)
         {
@@ -474,51 +464,95 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task DownloadModelAsync()
+    private async Task UploadModelAsync()
     {
-        if (SelectedModel is null || IsDownloading)
+        var lifetime = (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime);
+        var window = lifetime?.MainWindow;
+        if (window is null)
+        {
+            Status = "Jendela utama tidak tersedia.";
+            return;
+        }
+
+        var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Pilih file model GGUF",
+            AllowMultiple = false,
+            FileTypeFilter = new[]
+            {
+                new FilePickerFileType("Model GGUF") { Patterns = new[] { "*.gguf" } }
+            }
+        });
+        if (files is null || files.Count == 0)
         {
             return;
         }
 
-        var model = SelectedModel;
-        IsDownloading = true;
-        DownloadPercent = 0;
-        Status = $"Mengunduh {model.Name}...";
+        string sourcePath = files[0].Path.LocalPath;
+        if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
+        {
+            Status = "File model tidak valid.";
+            return;
+        }
+
+        string modelDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Veritas", "models");
+        Directory.CreateDirectory(modelDir);
+        string destName = Path.GetFileName(sourcePath);
+        string destPath = Path.Combine(modelDir, destName);
+
+        Status = $"Menyalin {destName} ke penyimpanan permanen...";
         try
         {
-            bool completed = await Task.Run(() => _engine.DownloadModel(model.Id, ev =>
-            {
-                Dispatcher.UIThread.Post(() =>
-                {
-                    DownloadPercent = ev.Percent * 100.0;
-                    if (ev.Stage == "download_error")
-                    {
-                        Status = $"Unduhan gagal: {ev.Message}";
-                    }
-                    else if (ev.Stage == "download_done")
-                    {
-                        Status = "Model terunduh dan SHA-256 terverifikasi.";
-                    }
-                    else if (ev.Stage == "download")
-                    {
-                        Status = $"Mengunduh {model.Id}: {ev.Message}";
-                    }
-                });
-            }));
-            Status = completed
-                ? "Model siap digunakan tanpa koneksi."
-                : "Unduhan dibatalkan.";
+            await Task.Run(() => File.Copy(sourcePath, destPath, overwrite: true));
+            Status = $"Model {destName} tersimpan permanen.";
         }
         catch (Exception ex)
         {
-            Status = $"Unduh gagal: {ex.Message}";
+            Status = $"Gagal menyimpan model: {ex.Message}";
+            return;
         }
-        finally
+
+        await RefreshModelsAsync();
+        var uploadedId = Path.GetFileNameWithoutExtension(destName);
+        SelectedModel = Models.FirstOrDefault(m => m.Id == uploadedId) ?? SelectedModel;
+    }
+
+    partial void OnSelectedModelChanged(ModelInfo? value)
+    {
+        if (value is null)
         {
-            IsDownloading = false;
-            DownloadPercent = 0;
-            await RefreshModelsAsync();
+            return;
+        }
+        Settings.ModelId = value.Id;
+        _settingsService.Save(Settings);
+
+        // Recreate the engine so the newly selected model is loaded.
+        try
+        {
+            _engine.Dispose();
+        }
+        catch
+        {
+            // Ignore disposal errors.
+        }
+        try
+        {
+            var config = JsonSerializer.Serialize(new
+            {
+                model_id = Settings.ModelId,
+                threads = Math.Clamp(Environment.ProcessorCount, 1, 8),
+                context_tokens = 8192,
+                max_output_tokens = 1400,
+                online_evidence = Settings.OnlineEvidence,
+            });
+            _engine = new NativeEngine(config);
+            Status = $"Model aktif: {value.Name}.";
+        }
+        catch (Exception ex)
+        {
+            Status = $"Gagal memuat model: {ex.Message}";
         }
     }
 
@@ -531,7 +565,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         _settingsService.Save(Settings);
         ApplyTheme(Settings.Theme);
-        Status = "Pengaturan disimpan. Perubahan model dan bukti daring berlaku setelah aplikasi dibuka ulang.";
+        Status = "Pengaturan disimpan.";
     }
 
     [RelayCommand]

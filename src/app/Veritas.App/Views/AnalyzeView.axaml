@@ -22,7 +22,7 @@
                     </Transitions>
                 </Border.Transitions>
                 <StackPanel Spacing="18">
-                    <Grid ColumnDefinitions="Auto,*,*,*" ColumnSpacing="18">
+                    <Grid ColumnDefinitions="Auto,*,*,*,*" ColumnSpacing="18">
                         <Border Grid.Column="0" Background="{Binding ResultVerdict, Converter={StaticResource VerdictBrush}}"
                                 CornerRadius="10" Padding="16,10" VerticalAlignment="Center">
                             <TextBlock Text="{Binding ResultVerdict}" Foreground="White" FontWeight="Bold" FontSize="18" />
@@ -42,6 +42,12 @@
                         <StackPanel Grid.Column="3" VerticalAlignment="Center" Spacing="2">
                             <TextBlock Text="Model" Classes="label" />
                             <TextBlock Text="{Binding ResultModel}" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="4" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Text="Skor AI" Classes="label" />
+                            <TextBlock Text="{Binding ResultAiPercentage, StringFormat='{}{0}%'}" FontSize="24" FontWeight="Bold" />
+                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding ResultAiPercentage}"
+                                         Foreground="{DynamicResource AccentBrush}" />
                         </StackPanel>
                     </Grid>
 

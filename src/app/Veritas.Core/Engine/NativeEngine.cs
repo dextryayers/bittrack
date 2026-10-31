@@ -43,13 +43,6 @@ public sealed class NativeEngine : IDisposable
     [DllImport("veritas_engine", CallingConvention = CallingConvention.Cdecl)]
     private static extern IntPtr veritas_list_models(IntPtr engine);
 
-    [DllImport("veritas_engine", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int veritas_download_model(
-        IntPtr engine,
-        IntPtr modelId,
-        [MarshalAs(UnmanagedType.FunctionPtr)] ProgressCallback? progressCb,
-        IntPtr userData);
-
     public NativeEngine(string? configJson = null)
     {
         IntPtr cfg = configJson is null ? IntPtr.Zero : Marshal.StringToCoTaskMemUTF8(configJson);
@@ -104,35 +97,6 @@ public sealed class NativeEngine : IDisposable
                 veritas_free_string(resultPtr);
             }
             Marshal.FreeCoTaskMem(reqPtr);
-        }
-    }
-
-    /// <summary>
-    /// Downloads and verifies a model. Blocking; call from a worker thread.
-    /// Returns true on success, false when cancelled.
-    /// </summary>
-    public bool DownloadModel(string modelId, Action<ProgressEvent>? onProgress = null)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        IntPtr idPtr = Marshal.StringToCoTaskMemUTF8(modelId);
-        try
-        {
-            var callback = CreateProgressCallback(onProgress);
-            int code = veritas_download_model(_handle, idPtr, callback, IntPtr.Zero);
-            if (code == 2)
-            {
-                return false;
-            }
-            if (code != 0)
-            {
-                throw new InvalidOperationException("Unduhan model gagal. Lihat pesan progres untuk detail.");
-            }
-            return true;
-        }
-        finally
-        {
-            Marshal.FreeCoTaskMem(idPtr);
         }
     }
 

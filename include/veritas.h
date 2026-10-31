@@ -26,8 +26,6 @@ void veritas_free_string(char* s);
 
 char* veritas_health(VeritasEngine* engine);
 char* veritas_list_models(VeritasEngine* engine);
-int   veritas_download_model(VeritasEngine* engine, const char* model_id,
-                             VeritasProgressCb cb, void* user_data);
 
 #ifdef __cplusplus
 }

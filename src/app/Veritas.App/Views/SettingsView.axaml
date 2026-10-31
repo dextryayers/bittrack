@@ -14,9 +14,9 @@
                 <StackPanel Spacing="16">
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <TextBlock Text="Model" Classes="h2" VerticalAlignment="Center" />
-                        <Button Content="Segarkan" Classes="ghost" Command="{Binding RefreshModelsCommand}" IsEnabled="{Binding !IsDownloading}" />
+                        <Button Content="Segarkan" Classes="ghost" Command="{Binding RefreshModelsCommand}" />
                     </StackPanel>
-                    <TextBlock Text="Model berjalan sepenuhnya lokal. Unduhan diverifikasi SHA-256 dan bisa dilanjutkan."
+                    <TextBlock Text="Model berjalan sepenuhnya lokal. Upload file .gguf untuk menambah model; pilih dari daftar untuk mengaktifkan."
                                Classes="muted" FontSize="12" TextWrapping="Wrap" />
                     <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}" Width="420" HorizontalAlignment="Left">
                         <ComboBox.ItemTemplate>
@@ -30,11 +30,8 @@
                     </ComboBox>
                     <TextBlock Text="{Binding SelectedModel.Path}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
                     <StackPanel Orientation="Horizontal" Spacing="12">
-                        <Button Content="Unduh / lanjutkan model" Classes="primary"
-                                Command="{Binding DownloadModelCommand}"
-                                IsEnabled="{Binding !IsDownloading}" />
-                        <ProgressBar IsVisible="{Binding IsDownloading}" Minimum="0" Maximum="100"
-                                     Value="{Binding DownloadPercent}" Width="220" VerticalAlignment="Center" />
+                        <Button Content="Upload model GGUF" Classes="primary"
+                                Command="{Binding UploadModelCommand}" />
                     </StackPanel>
                     <TextBlock Text="{Binding Status}" Classes="muted" TextWrapping="Wrap" />
                 </StackPanel>

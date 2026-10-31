@@ -16,7 +16,6 @@ use std::os::raw::c_char;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 use serde_json::json;
@@ -73,7 +72,6 @@ struct EngineConfig {
 
 struct EngineInner {
     models: Mutex<ModelManager>,
-    downloads: Mutex<()>,
     config: EngineConfig,
     cancel: AtomicBool,
     #[cfg(feature = "llm")]
@@ -113,7 +111,6 @@ pub extern "C" fn veritas_init(config_json: *const c_char) -> *mut VeritasEngine
         let engine = VeritasEngine {
             inner: Arc::new(EngineInner {
                 models: Mutex::new(manager),
-                downloads: Mutex::new(()),
                 config,
                 cancel: AtomicBool::new(false),
                 #[cfg(feature = "llm")]
@@ -540,6 +537,7 @@ fn analyze(
         verdict,
         confidence,
         truth_percentage,
+        ai_percentage: parsed.ai_score.clamp(0, 100) as u8,
         summary,
         claims,
         evidence,
@@ -567,6 +565,8 @@ struct ModelOutput {
     claims: Vec<ModelClaim>,
     #[serde(default)]
     red_flags: Vec<String>,
+    #[serde(default)]
+    ai_score: i32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -608,14 +608,14 @@ fn run_inference(
             message: "model manager lock poisoned".into(),
         })?;
         let spec = match inner.config.model_id.as_ref() {
-            Some(id) => manager.spec(id).cloned().ok_or_else(|| ErrorPayload {
+            Some(id) => manager.spec(id).ok_or_else(|| ErrorPayload {
                 code: "model_unavailable".into(),
                 message: format!("Model '{id}' tidak ada dalam katalog."),
             })?,
             None => manager.best_installed().ok_or_else(|| ErrorPayload {
                 code: "model_unavailable".into(),
                 message: format!(
-                    "Tidak ada model GGUF terpasang. Unduh model di Pengaturan. Folder: {}",
+                    "Tidak ada model GGUF terpasang. Upload model di Pengaturan. Folder: {}",
                     manager.cache_dir().display()
                 ),
             })?,
@@ -793,7 +793,8 @@ fn build_system_prompt(max_claims: u32) -> String {
          6. Ringkasan 2-4 kalimat bahasa Indonesia: klaim inti, apa yang ditunjukkan bukti, lalu kesimpulan.\n\
          7. Pecah maksimal {max_claims} klaim terpenting. Isi evidence_ids dengan nomor bukti referensi yang relevan; array kosong bila tidak ada.\n\
          8. red_flags: pola manipulasi yang benar-benar terlihat, misalnya ajakan menyebarkan sebelum dihapus, sumber anonim, angka tanpa dasar, atau judul sensasional. Array kosong bila tidak ada.\n\
-         9. Balas HANYA JSON sesuai skema, tanpa teks lain."
+         9. ai_score = probabilitas 0-100 bahwa teks masukan ditulis oleh AI (bukan manusia). Perhatikan pola repetitif, kosakata generik, struktur terlalu rapi, dan kurangnya detail personal/spesifik. Skor tinggi = kemungkinan besar ditulis AI.\n\
+         10. Balas HANYA JSON sesuai skema, tanpa teks lain."
     )
 }
 
@@ -928,111 +929,6 @@ pub unsafe extern "C" fn veritas_list_models(engine: *const VeritasEngine) -> *m
     }
 }
 
-/// Download a model. Blocking. Returns 0 on success, 2 when cancelled, 1 on
-/// failure. Progress events carry stage `download` and, on failure,
-/// `download_error` with the reason in `message`.
-///
-/// # Safety
-/// `engine` must be a valid handle from `veritas_init` and `model_id` must be a
-/// null-terminated UTF-8 string.
-#[no_mangle]
-pub unsafe extern "C" fn veritas_download_model(
-    engine: *mut VeritasEngine,
-    model_id: *const c_char,
-    progress_cb: ProgressCb,
-    user_data: *mut std::ffi::c_void,
-) -> i32 {
-    let result = catch_unwind(AssertUnwindSafe(|| {
-        if engine.is_null() || model_id.is_null() {
-            return 1;
-        }
-        let engine = unsafe { &*engine };
-        let id = unsafe { CStr::from_ptr(model_id) }
-            .to_str()
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        if id.is_empty() {
-            return 1;
-        }
-        engine.inner.cancel.store(false, Ordering::SeqCst);
-
-        let report = |stage: &str, percent: f64, message: &str| {
-            if let Some(cb) = progress_cb {
-                let ev = ProgressEvent {
-                    stage: stage.to_string(),
-                    percent,
-                    message: message.to_string(),
-                };
-                if let Ok(s) = serde_json::to_string(&ev) {
-                    if let Ok(c) = CString::new(s) {
-                        unsafe { cb(c.as_ptr(), user_data) };
-                    }
-                }
-            }
-        };
-
-        let manager = match engine.inner.models.lock() {
-            Ok(m) => m.clone(),
-            Err(_) => {
-                report("download_error", 0.0, "model manager lock poisoned");
-                return 1;
-            }
-        };
-        let _guard = match engine.inner.downloads.lock() {
-            Ok(g) => g,
-            Err(_) => {
-                report("download_error", 0.0, "download lock poisoned");
-                return 1;
-            }
-        };
-
-        let mut last_report = Instant::now()
-            .checked_sub(Duration::from_secs(1))
-            .unwrap_or_else(Instant::now);
-        let cancel = &engine.inner.cancel;
-        let outcome = manager.download(&id, |done, total| {
-            if cancel.load(Ordering::SeqCst) {
-                return false;
-            }
-            if last_report.elapsed() >= Duration::from_millis(400) || (total > 0 && done >= total) {
-                let percent = if total == 0 {
-                    0.0
-                } else {
-                    done as f64 / total as f64
-                };
-                report(
-                    "download",
-                    percent,
-                    &format!("{} / {}", format_bytes(done), format_bytes(total)),
-                );
-                last_report = Instant::now();
-            }
-            true
-        });
-
-        match outcome {
-            Ok(path) => {
-                report(
-                    "download_done",
-                    1.0,
-                    &format!("Model siap: {}", path.display()),
-                );
-                0
-            }
-            Err(veritas_models::ModelError::Cancelled) => {
-                report("download_cancelled", 0.0, "Unduhan dibatalkan.");
-                2
-            }
-            Err(e) => {
-                report("download_error", 0.0, &e.to_string());
-                1
-            }
-        }
-    }));
-    result.unwrap_or(1)
-}
-
 // ---------- helpers ----------
 
 fn error_json(code: &str, message: &str) -> *mut c_char {
@@ -1075,17 +971,6 @@ fn truncate_chars(text: &str, max: usize) -> String {
     let mut out: String = text.chars().take(max).collect();
     out.push('…');
     out
-}
-
-fn format_bytes(bytes: u64) -> String {
-    const MB: f64 = 1024.0 * 1024.0;
-    const GB: f64 = 1024.0 * MB;
-    let value = bytes as f64;
-    if value >= GB {
-        format!("{:.2} GB", value / GB)
-    } else {
-        format!("{:.1} MB", value / MB)
-    }
 }
 
 fn now_ms() -> i64 {

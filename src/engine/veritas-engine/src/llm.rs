@@ -1,10 +1,10 @@
 //! Local GGUF inference through llama.cpp.
 //!
 //! The model is loaded once from disk and reused. Every request creates a fresh
-//! context, applies the model's own chat template, and constrains decoding with
-//! a JSON grammar so the caller always receives a schema-shaped object instead
-//! of free-form prose. Generation runs on the caller's thread and honours a
-//! cooperative cancellation flag and a hard wall-clock deadline.
+//! context, applies the model's own chat template, and decodes greedily or with
+//! light sampling. The first JSON object in the output is extracted and validated
+//! against the schema by the caller. Generation runs on the caller's thread and
+//! honours a cooperative cancellation flag and a hard wall-clock deadline.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -96,9 +96,10 @@ pub const OUTPUT_SCHEMA: &str = r#"{
     "red_flags": {
       "type": "array",
       "items": { "type": "string" }
-    }
+    },
+    "ai_score": { "type": "integer", "minimum": 0, "maximum": 100 }
   },
-  "required": ["verdict", "truth_score", "confidence", "summary", "claims", "red_flags"]
+  "required": ["verdict", "truth_score", "confidence", "summary", "claims", "red_flags", "ai_score"]
 }"#;
 
 /// A loaded GGUF model. The llama.cpp backend is owned by the engine so that it
@@ -139,7 +140,7 @@ impl Llm {
         })
     }
 
-    /// Generate a JSON object constrained by [`OUTPUT_SCHEMA`].
+    /// Generate a JSON object following [`OUTPUT_SCHEMA`].
     ///
     /// `seed` selects deterministic greedy decoding when `None`, or temperature
     /// sampling when `Some`, which is used for the single retry.
