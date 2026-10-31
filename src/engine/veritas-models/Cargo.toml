@@ -11,8 +11,6 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 sha2 = { workspace = true }
 reqwest = { workspace = true }
-tokio = { workspace = true }
-futures-util = "0.3"
 tracing = { workspace = true }
 
 [dev-dependencies]

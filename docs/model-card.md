@@ -40,7 +40,11 @@ Benchmark: `data/eval/benchmark.jsonl`, 36 labeled samples, six classes.
 - Accuracy: 1.000
 - Macro-F1: 1.000
 - ECE: 0.104
+<<<<<<< HEAD
 - Latency p50: 0.70 ms, p95: 1.21 ms (debug build, this machine)
+=======
+- Latency p50: 0.700 ms, p95: 1.270 ms (debug build, this machine)
+>>>>>>> 174bc16700e4929c1d93663e24435c351c4593e4
 
 The benchmark is a development regression set that was also used to tune the
 heuristics and calibration. Treat these numbers as a regression baseline, not a

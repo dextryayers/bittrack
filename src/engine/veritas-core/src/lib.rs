@@ -28,6 +28,20 @@ pub enum Verdict {
 }
 
 impl Verdict {
+    /// Parse a verdict from its stable string form.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value.trim().to_ascii_lowercase().as_str() {
+            "hoax" => Verdict::Hoax,
+            "misleading" => Verdict::Misleading,
+            "clickbait" => Verdict::Clickbait,
+            "buzzer" => Verdict::Buzzer,
+            "valid" => Verdict::Valid,
+            "unverifiable" => Verdict::Unverifiable,
+            _ => return None,
+        })
+    }
+
     /// Stable string form used in JSON and logs.
     pub fn as_str(self) -> &'static str {
         match self {
@@ -44,10 +58,16 @@ impl Verdict {
 /// Request payload from the UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalyzeRequest {
-    /// Raw article text. Required if `url` is empty.
+    /// Raw article text. Required if `url` and `poster_text` are empty.
     pub text: Option<String>,
-    /// Article URL. Required if `text` is empty.
+    /// Article URL. Required if `text` and `poster_text` are empty.
     pub url: Option<String>,
+    /// Reader comments to include as additional context.
+    #[serde(default)]
+    pub comments: Option<String>,
+    /// Text extracted from an uploaded poster image.
+    #[serde(default)]
+    pub poster_text: Option<String>,
     /// Language hint.
     pub lang_hint: String,
     /// Options.
@@ -58,12 +78,15 @@ pub struct AnalyzeRequest {
 /// Options for analysis.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalyzeOptions {
-    /// Decision threshold 0.0..=1.0.
+    /// Minimum model confidence 0.0..=1.0 required before a decisive verdict is
+    /// accepted. Lower confidence results are reported as `unverifiable`.
     pub threshold: f64,
-    /// Include heuristic signals in output.
+    /// Include heuristic signals in output. Signals are never used as a verdict.
     pub include_heuristics: bool,
-    /// Maximum claims to extract.
+    /// Maximum claims to accept from the model.
     pub max_claims: u32,
+    /// Fetch live fact-check and encyclopedia evidence before inference.
+    pub online_evidence: bool,
 }
 
 impl Default for AnalyzeOptions {
@@ -72,6 +95,7 @@ impl Default for AnalyzeOptions {
             threshold: 0.5,
             include_heuristics: true,
             max_claims: 8,
+            online_evidence: true,
         }
     }
 }
@@ -83,7 +107,8 @@ pub struct Claim {
     pub id: u32,
     /// Claim text.
     pub text: String,
-    /// Claim type.
+    /// Claim type. Serialized as `type` to match the UI contract.
+    #[serde(rename = "type")]
     pub claim_type: String,
     /// Importance 1..=5.
     pub importance: u8,
@@ -112,6 +137,8 @@ pub struct Evidence {
     pub date: String,
     /// Retrieval score 0.0..=1.0.
     pub score: f64,
+    /// Evidence kind: `fact_check`, `encyclopedia`, or `web`.
+    pub kind: String,
 }
 
 /// Heuristic signals.
@@ -147,8 +174,10 @@ pub struct Audit {
 pub struct AnalyzeResponse {
     /// Primary verdict.
     pub verdict: Verdict,
-    /// Calibrated confidence 0.0..=1.0.
+    /// Model confidence 0.0..=1.0 that the verdict is correct.
     pub confidence: f64,
+    /// Model-estimated probability 0..=100 that the core claim is true.
+    pub truth_percentage: u8,
     /// One-paragraph summary.
     pub summary: String,
     /// Extracted claims.
@@ -157,6 +186,10 @@ pub struct AnalyzeResponse {
     pub evidence: Vec<Evidence>,
     /// Heuristic signals.
     pub heuristics: Heuristics,
+    /// Manipulation patterns identified by the model.
+    pub red_flags: Vec<String>,
+    /// Non-fatal problems encountered while producing this result.
+    pub warnings: Vec<String>,
     /// Audit metadata.
     pub audit: Audit,
 }
@@ -201,18 +234,33 @@ fn hex_encode(bytes: &[u8]) -> String {
 /// Validate an AnalyzeRequest. Returns Ok or a list of problems.
 pub fn validate_request(req: &AnalyzeRequest) -> Result<(), Vec<String>> {
     let mut problems = Vec::new();
-    let has_text = req
-        .text
-        .as_ref()
-        .map(|t| !t.trim().is_empty())
-        .unwrap_or(false);
-    let has_url = req
-        .url
-        .as_ref()
-        .map(|u| !u.trim().is_empty())
-        .unwrap_or(false);
-    if !has_text && !has_url {
-        problems.push("either text or url must be provided".to_string());
+    let len = |value: &Option<String>| -> usize {
+        value.as_ref().map(|v| v.trim().chars().count()).unwrap_or(0)
+    };
+    let has_text = len(&req.text) > 0;
+    let has_url = len(&req.url) > 0;
+    let has_poster = len(&req.poster_text) > 0;
+    let has_comments = len(&req.comments) > 0;
+    if !has_text && !has_url && !has_poster && !has_comments {
+        problems.push("text, url, poster_text, or comments must be provided".to_string());
+    }
+    if len(&req.text) > 200_000 {
+        problems.push("text exceeds 200000 characters".to_string());
+    }
+    if len(&req.comments) > 20_000 {
+        problems.push("comments exceed 20000 characters".to_string());
+    }
+    if len(&req.poster_text) > 20_000 {
+        problems.push("poster_text exceeds 20000 characters".to_string());
+    }
+    if let Some(url) = req.url.as_ref().map(|u| u.trim()).filter(|u| !u.is_empty()) {
+        if url.len() > 2048 {
+            problems.push("url exceeds 2048 characters".to_string());
+        }
+        let lower = url.to_ascii_lowercase();
+        if !(lower.starts_with("https://") || lower.starts_with("http://")) {
+            problems.push("url must start with http:// or https://".to_string());
+        }
     }
     let opts = req.options.clone().unwrap_or_default();
     if !(0.0..=1.0).contains(&opts.threshold) {
@@ -253,6 +301,8 @@ mod tests {
         let req = AnalyzeRequest {
             text: None,
             url: None,
+            comments: None,
+            poster_text: None,
             lang_hint: "auto".into(),
             options: Some(AnalyzeOptions::default()),
         };
@@ -264,10 +314,38 @@ mod tests {
         let req = AnalyzeRequest {
             text: Some("hello".into()),
             url: None,
+            comments: None,
+            poster_text: None,
             lang_hint: "auto".into(),
             options: Some(AnalyzeOptions::default()),
         };
         assert!(validate_request(&req).is_ok());
+    }
+
+    #[test]
+    fn validate_accepts_poster_only() {
+        let req = AnalyzeRequest {
+            text: None,
+            url: None,
+            comments: None,
+            poster_text: Some("VIRAL vaksin microchip".into()),
+            lang_hint: "id".into(),
+            options: Some(AnalyzeOptions::default()),
+        };
+        assert!(validate_request(&req).is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_non_http_url() {
+        let req = AnalyzeRequest {
+            text: None,
+            url: Some("file:///etc/passwd".into()),
+            comments: None,
+            poster_text: None,
+            lang_hint: "id".into(),
+            options: Some(AnalyzeOptions::default()),
+        };
+        assert!(validate_request(&req).is_err());
     }
 
     #[test]
