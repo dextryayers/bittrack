@@ -17,5 +17,12 @@ Thumbs.db
 # Logs
 *.log
 
+# Python
+__pycache__/
+*.pyc
+
+# Local environment
+.env
+
 # Build artifacts
 artifacts/

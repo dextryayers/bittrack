@@ -45,7 +45,14 @@ python scripts/eval.py --engine src/engine/target/debug/veritas_engine.dll --dat
 python scripts/bench.py --engine src/engine/target/debug/veritas_engine.dll --dataset data/eval/benchmark.jsonl
 ```
 
-Current benchmark: 36 samples, accuracy 0.972, macro-F1 0.972, ECE 0.072.
+Current benchmark: 36 samples, accuracy 1.000, macro-F1 1.000, ECE 0.104.
+The benchmark is a development regression set, not a held-out test set.
+
+Tune calibration:
+
+```
+python scripts/calibrate.py --engine src/engine/target/debug/veritas_engine.dll --dataset data/eval/benchmark.jsonl
+```
 
 ## Installers
 

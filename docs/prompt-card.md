@@ -23,6 +23,15 @@ unverifiable without a generative model.
 5. If valid keywords dominate, return valid.
 6. Otherwise return unverifiable.
 
+## Aggregation
+
+1. Claims with a decisive verdict vote with weight `importance * confidence`.
+2. Unverifiable claims abstain and do not dilute a decisive verdict.
+3. If every claim abstains, strong buzzer or clickbait signals can still drive
+   the verdict.
+4. Confidence is calibrated with temperature T=0.4. For abstentions it is the
+   probability that the text cannot be decided from the available evidence.
+
 ## Output
 
 ```
