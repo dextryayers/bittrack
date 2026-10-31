@@ -108,7 +108,10 @@ pub struct FactDb {
 
 impl FactDb {
     /// Open or create a database at the given path.
-    pub fn open(path: &std::path::Path, embedder: Box<dyn Embedder>) -> Result<Self, rusqlite::Error> {
+    pub fn open(
+        path: &std::path::Path,
+        embedder: Box<dyn Embedder>,
+    ) -> Result<Self, rusqlite::Error> {
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -234,7 +237,8 @@ fn f32s_to_bytes(v: &[f32]) -> Vec<u8> {
 }
 
 fn bytes_to_f32s(b: &[u8]) -> Vec<f32> {
-    b.chunks_exact(4)
+    b.chunks(4)
+        .filter(|c| c.len() == 4)
         .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect()
 }
@@ -279,17 +283,83 @@ mod tests {
 }
 
 /// Built-in seed claims (Indonesian). Small, for offline RAG baseline.
-pub fn builtin_seed() -> Vec<(&'static str, &'static str, &'static str, &'static str, &'static str)> {
+pub fn builtin_seed() -> Vec<(
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+)> {
     vec![
-        ("Vaksin COVID-19 mengandung microchip untuk pelacakan", "hoax", "turnbackhoax", "https://turnbackhoax.id", "2021-01-01"),
-        ("Bawang putih bisa sembuhkan COVID-19 dalam 5 menit", "hoax", "turnbackhoax", "https://turnbackhoax.id", "2020-03-01"),
-        ("Pemerintah akan memblokir WhatsApp mulai besok", "hoax", "mafino", "https://mafindo.or.id", "2022-01-01"),
-        ("Gempa bumi di Jakarta diprediksi akan terjadi minggu depan", "hoax", "kompas", "https://www.kompas.com/cekfakta", "2023-01-01"),
-        ("Presiden mengumumkan libur nasional tambahan", "valid", "kompas", "https://www.kompas.com", "2023-06-01"),
-        ("Bank Indonesia menaikkan suku bunga acuan", "valid", "antaranews", "https://www.antaranews.com", "2023-07-01"),
-        ("Kementerian Kesehatan merilis data vaksinasi terbaru", "valid", "kemenkes", "https://www.kemkes.go.id", "2023-08-01"),
-        ("Berita viral ini wajib dibagikan ke semua grup WhatsApp", "misleading", "turnbackhoax", "https://turnbackhoax.id", "2022-05-01"),
-        ("Share ke 10 orang agar tidak sial", "misleading", "turnbackhoax", "https://turnbackhoax.id", "2022-06-01"),
-        ("Viralkan sebelum dihapus pemerintah", "misleading", "mafino", "https://mafindo.or.id", "2022-07-01"),
+        (
+            "Vaksin COVID-19 mengandung microchip untuk pelacakan",
+            "hoax",
+            "turnbackhoax",
+            "https://turnbackhoax.id",
+            "2021-01-01",
+        ),
+        (
+            "Bawang putih bisa sembuhkan COVID-19 dalam 5 menit",
+            "hoax",
+            "turnbackhoax",
+            "https://turnbackhoax.id",
+            "2020-03-01",
+        ),
+        (
+            "Pemerintah akan memblokir WhatsApp mulai besok",
+            "hoax",
+            "mafino",
+            "https://mafindo.or.id",
+            "2022-01-01",
+        ),
+        (
+            "Gempa bumi di Jakarta diprediksi akan terjadi minggu depan",
+            "hoax",
+            "kompas",
+            "https://www.kompas.com/cekfakta",
+            "2023-01-01",
+        ),
+        (
+            "Presiden mengumumkan libur nasional tambahan",
+            "valid",
+            "kompas",
+            "https://www.kompas.com",
+            "2023-06-01",
+        ),
+        (
+            "Bank Indonesia menaikkan suku bunga acuan",
+            "valid",
+            "antaranews",
+            "https://www.antaranews.com",
+            "2023-07-01",
+        ),
+        (
+            "Kementerian Kesehatan merilis data vaksinasi terbaru",
+            "valid",
+            "kemenkes",
+            "https://www.kemkes.go.id",
+            "2023-08-01",
+        ),
+        (
+            "Berita viral ini wajib dibagikan ke semua grup WhatsApp",
+            "misleading",
+            "turnbackhoax",
+            "https://turnbackhoax.id",
+            "2022-05-01",
+        ),
+        (
+            "Share ke 10 orang agar tidak sial",
+            "misleading",
+            "turnbackhoax",
+            "https://turnbackhoax.id",
+            "2022-06-01",
+        ),
+        (
+            "Viralkan sebelum dihapus pemerintah",
+            "misleading",
+            "mafino",
+            "https://mafindo.or.id",
+            "2022-07-01",
+        ),
     ]
 }

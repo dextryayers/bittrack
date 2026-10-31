@@ -201,8 +201,16 @@ fn hex_encode(bytes: &[u8]) -> String {
 /// Validate an AnalyzeRequest. Returns Ok or a list of problems.
 pub fn validate_request(req: &AnalyzeRequest) -> Result<(), Vec<String>> {
     let mut problems = Vec::new();
-    let has_text = req.text.as_ref().map(|t| !t.trim().is_empty()).unwrap_or(false);
-    let has_url = req.url.as_ref().map(|u| !u.trim().is_empty()).unwrap_or(false);
+    let has_text = req
+        .text
+        .as_ref()
+        .map(|t| !t.trim().is_empty())
+        .unwrap_or(false);
+    let has_url = req
+        .url
+        .as_ref()
+        .map(|u| !u.trim().is_empty())
+        .unwrap_or(false);
     if !has_text && !has_url {
         problems.push("either text or url must be provided".to_string());
     }

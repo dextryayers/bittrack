@@ -170,15 +170,18 @@ impl ModelManager {
     where
         F: FnMut(u64, u64) + Send,
     {
-        let spec = self.spec(id).ok_or_else(|| ModelError::NotFound(id.to_string()))?.clone();
+        let spec = self
+            .spec(id)
+            .ok_or_else(|| ModelError::NotFound(id.to_string()))?
+            .clone();
         std::fs::create_dir_all(&self.cache_dir)?;
         let path = self.model_path(id);
         let client = reqwest::Client::new();
         let resp = client.get(&spec.url).send().await?.error_for_status()?;
         let total = resp.content_length().unwrap_or(spec.size_bytes);
         let mut file = std::fs::File::create(&path)?;
-        use std::io::Write;
         use futures_util::StreamExt;
+        use std::io::Write;
         let mut stream = resp.bytes_stream();
         let mut downloaded: u64 = 0;
         while let Some(chunk) = stream.next().await {
@@ -247,6 +250,9 @@ mod tests {
         let dir = tempdir().unwrap();
         let mgr = ModelManager::new(dir.path().to_path_buf(), vec![]);
         // no specs, but path check
-        assert_eq!(mgr.model_path("x").file_name().unwrap().to_str().unwrap(), "x.gguf");
+        assert_eq!(
+            mgr.model_path("x").file_name().unwrap().to_str().unwrap(),
+            "x.gguf"
+        );
     }
 }

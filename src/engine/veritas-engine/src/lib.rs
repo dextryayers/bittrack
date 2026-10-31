@@ -55,7 +55,9 @@ pub extern "C" fn veritas_init(config_json: *const c_char) -> *mut VeritasEngine
 
         let db_path = rag::default_db_path();
         let factdb = rag::FactDb::open(&db_path, Box::new(rag::HashingEmbedder::default()))
-            .unwrap_or_else(|_| rag::FactDb::open_in_memory(Box::new(rag::HashingEmbedder::default())).unwrap());
+            .unwrap_or_else(|_| {
+                rag::FactDb::open_in_memory(Box::new(rag::HashingEmbedder::default())).unwrap()
+            });
         if factdb.count() == 0 {
             factdb.seed(&rag::builtin_seed());
         }
@@ -78,8 +80,12 @@ pub extern "C" fn veritas_init(config_json: *const c_char) -> *mut VeritasEngine
 }
 
 /// Free an engine handle.
+///
+/// # Safety
+/// `engine` must be a pointer returned by `veritas_init` and must not be used
+/// after this call.
 #[no_mangle]
-pub extern "C" fn veritas_free(engine: *mut VeritasEngine) {
+pub unsafe extern "C" fn veritas_free(engine: *mut VeritasEngine) {
     if engine.is_null() {
         return;
     }
@@ -92,15 +98,16 @@ pub extern "C" fn veritas_free(engine: *mut VeritasEngine) {
 }
 
 /// Free a string returned by the engine.
+///
+/// # Safety
+/// `s` must be a pointer returned by this library and must not be freed twice.
 #[no_mangle]
-pub extern "C" fn veritas_free_string(s: *mut c_char) {
+pub unsafe extern "C" fn veritas_free_string(s: *mut c_char) {
     if s.is_null() {
         return;
     }
-    let _ = catch_unwind(AssertUnwindSafe(|| {
-        unsafe {
-            drop(CString::from_raw(s));
-        }
+    let _ = catch_unwind(AssertUnwindSafe(|| unsafe {
+        drop(CString::from_raw(s));
     }));
 }
 
@@ -127,8 +134,13 @@ pub extern "C" fn veritas_health(engine: *const VeritasEngine) -> *mut c_char {
 
 /// Analyze text or URL. Returns owned JSON string (AnalyzeResponse or ErrorPayload).
 /// Progress is reported via callback.
+///
+/// # Safety
+/// `engine` must be a valid handle from `veritas_init`, `request_json` must be a
+/// null-terminated UTF-8 string, and `user_data` must remain valid for the
+/// duration of the call.
 #[no_mangle]
-pub extern "C" fn veritas_analyze(
+pub unsafe extern "C" fn veritas_analyze(
     engine: *mut VeritasEngine,
     request_json: *const c_char,
     progress_cb: ProgressCb,
@@ -136,10 +148,13 @@ pub extern "C" fn veritas_analyze(
 ) -> *mut c_char {
     let result = catch_unwind(AssertUnwindSafe(|| {
         if engine.is_null() || request_json.is_null() {
-            return to_cstring(&serde_json::to_string(&ErrorPayload {
-                code: "invalid_argument".into(),
-                message: "engine or request is null".into(),
-            }).unwrap());
+            return to_cstring(
+                &serde_json::to_string(&ErrorPayload {
+                    code: "invalid_argument".into(),
+                    message: "engine or request is null".into(),
+                })
+                .unwrap(),
+            );
         }
 
         let engine = unsafe { &*engine };
@@ -149,18 +164,24 @@ pub extern "C" fn veritas_analyze(
         let req: AnalyzeRequest = match serde_json::from_str(req_str) {
             Ok(r) => r,
             Err(e) => {
-                return to_cstring(&serde_json::to_string(&ErrorPayload {
-                    code: "bad_request".into(),
-                    message: format!("invalid json: {e}"),
-                }).unwrap());
+                return to_cstring(
+                    &serde_json::to_string(&ErrorPayload {
+                        code: "bad_request".into(),
+                        message: format!("invalid json: {e}"),
+                    })
+                    .unwrap(),
+                );
             }
         };
 
         if let Err(problems) = validate_request(&req) {
-            return to_cstring(&serde_json::to_string(&ErrorPayload {
-                code: "validation".into(),
-                message: problems.join("; "),
-            }).unwrap());
+            return to_cstring(
+                &serde_json::to_string(&ErrorPayload {
+                    code: "validation".into(),
+                    message: problems.join("; "),
+                })
+                .unwrap(),
+            );
         }
 
         let rid = engine.inner.request_counter.fetch_add(1, Ordering::SeqCst) + 1;
@@ -189,10 +210,13 @@ pub extern "C" fn veritas_analyze(
         let input_hash = sha256_hex(normalized.as_bytes());
 
         if engine.inner.cancel.load(Ordering::SeqCst) {
-            return to_cstring(&serde_json::to_string(&ErrorPayload {
-                code: "cancelled".into(),
-                message: "analysis cancelled".into(),
-            }).unwrap());
+            return to_cstring(
+                &serde_json::to_string(&ErrorPayload {
+                    code: "cancelled".into(),
+                    message: "analysis cancelled".into(),
+                })
+                .unwrap(),
+            );
         }
 
         report("extract", 0.3, "extracting claims");
@@ -245,14 +269,18 @@ pub extern "C" fn veritas_analyze(
         let mut claims: Vec<Claim> = Vec::new();
         for (i, ct) in claims_text.iter().enumerate() {
             if engine.inner.cancel.load(Ordering::SeqCst) {
-                return to_cstring(&serde_json::to_string(&ErrorPayload {
-                    code: "cancelled".into(),
-                    message: "analysis cancelled".into(),
-                }).unwrap());
+                return to_cstring(
+                    &serde_json::to_string(&ErrorPayload {
+                        code: "cancelled".into(),
+                        message: "analysis cancelled".into(),
+                    })
+                    .unwrap(),
+                );
             }
             let ev_ids = claim_evidence.get(i).cloned().unwrap_or_default();
             let rag_v = rag_verdicts.get(i).cloned().flatten();
-            let (verdict, confidence, reasoning) = classify_with_rag(ct, rag_v.as_deref(), opts.threshold);
+            let (verdict, confidence, reasoning) =
+                classify_with_rag(ct, rag_v.as_deref(), opts.threshold);
             claims.push(Claim {
                 id: (i as u32) + 1,
                 text: ct.clone(),
@@ -269,7 +297,7 @@ pub extern "C" fn veritas_analyze(
 
         let heur_signals = heuristics::build_heuristics(&normalized);
 
-        let (verdict, confidence) = heuristics::aggregate(&claims, &heur_signals, opts.threshold, 0.4);
+        let (verdict, confidence) = heuristics::aggregate(&claims, &heur_signals, opts.threshold);
 
         let resp = AnalyzeResponse {
             verdict,
@@ -294,16 +322,22 @@ pub extern "C" fn veritas_analyze(
 
     match result {
         Ok(p) => p,
-        Err(_) => to_cstring(&serde_json::to_string(&ErrorPayload {
-            code: "panic".into(),
-            message: "engine panicked".into(),
-        }).unwrap()),
+        Err(_) => to_cstring(
+            &serde_json::to_string(&ErrorPayload {
+                code: "panic".into(),
+                message: "engine panicked".into(),
+            })
+            .unwrap(),
+        ),
     }
 }
 
 /// Cancel the in-flight request.
+///
+/// # Safety
+/// `engine` must be a valid handle from `veritas_init`.
 #[no_mangle]
-pub extern "C" fn veritas_cancel(engine: *mut VeritasEngine, _request_id: u64) {
+pub unsafe extern "C" fn veritas_cancel(engine: *mut VeritasEngine, _request_id: u64) {
     if engine.is_null() {
         return;
     }
@@ -314,8 +348,11 @@ pub extern "C" fn veritas_cancel(engine: *mut VeritasEngine, _request_id: u64) {
 }
 
 /// List models. Returns owned JSON string.
+///
+/// # Safety
+/// `engine` must be a valid handle from `veritas_init`.
 #[no_mangle]
-pub extern "C" fn veritas_list_models(engine: *const VeritasEngine) -> *mut c_char {
+pub unsafe extern "C" fn veritas_list_models(engine: *const VeritasEngine) -> *mut c_char {
     let result = catch_unwind(AssertUnwindSafe(|| {
         if engine.is_null() {
             return to_cstring("[]");
@@ -345,8 +382,12 @@ pub extern "C" fn veritas_list_models(engine: *const VeritasEngine) -> *mut c_ch
 }
 
 /// Download a model. Blocking. Returns 0 on success, nonzero on failure.
+///
+/// # Safety
+/// `engine` must be a valid handle from `veritas_init` and `model_id` must be a
+/// null-terminated UTF-8 string.
 #[no_mangle]
-pub extern "C" fn veritas_download_model(
+pub unsafe extern "C" fn veritas_download_model(
     engine: *mut VeritasEngine,
     model_id: *const c_char,
     _cb: ProgressCb,
@@ -357,9 +398,7 @@ pub extern "C" fn veritas_download_model(
             return 1;
         }
         let engine = unsafe { &mut *engine };
-        let id = unsafe { CStr::from_ptr(model_id) }
-            .to_str()
-            .unwrap_or("");
+        let id = unsafe { CStr::from_ptr(model_id) }.to_str().unwrap_or("");
         let cache_dir = {
             let mgr = engine.inner.models.lock().unwrap();
             // access cache dir via a temp manager reconstruction is not possible;
@@ -386,7 +425,9 @@ pub extern "C" fn veritas_download_model(
 // ---------- helpers ----------
 
 fn to_cstring(s: &str) -> *mut c_char {
-    CString::new(s).unwrap_or_else(|_| CString::new("").unwrap()).into_raw()
+    CString::new(s)
+        .unwrap_or_else(|_| CString::new("").unwrap())
+        .into_raw()
 }
 
 fn normalize_text(input: &str) -> String {
@@ -408,11 +449,12 @@ fn normalize_text(input: &str) -> String {
 }
 
 fn split_claims(text: &str, max: usize) -> Vec<String> {
-    // Simple sentence split. Real impl uses LLM claim extraction.
+    // Sentence split tuned for short social posts: keep imperative fragments
+    // such as "SHARE SEKARANG" instead of dropping them as noise.
     let mut claims = Vec::new();
     for part in text.split(['.', '!', '?']) {
         let t = part.trim();
-        if t.len() >= 20 && claims.len() < max {
+        if t.chars().count() >= 12 && claims.len() < max {
             claims.push(t.to_string());
         }
     }
@@ -422,7 +464,11 @@ fn split_claims(text: &str, max: usize) -> Vec<String> {
     claims
 }
 
-fn classify_with_rag(claim: &str, rag_verdict: Option<&str>, _threshold: f64) -> (Verdict, f64, String) {
+fn classify_with_rag(
+    claim: &str,
+    rag_verdict: Option<&str>,
+    _threshold: f64,
+) -> (Verdict, f64, String) {
     if let Some(rv) = rag_verdict {
         let v = match rv {
             "hoax" => Verdict::Hoax,
@@ -432,15 +478,29 @@ fn classify_with_rag(claim: &str, rag_verdict: Option<&str>, _threshold: f64) ->
             "clickbait" => Verdict::Clickbait,
             _ => Verdict::Unverifiable,
         };
-        return (v, 0.85, format!("RAG match to verified fact (verdict: {rv})."));
+        return (
+            v,
+            0.85,
+            format!("RAG match to verified fact (verdict: {rv})."),
+        );
     }
     // fallback heuristic
     let lower = claim.to_lowercase();
     let clickbait_keywords = [
-        "viral", "gila", "mencengangkan", "rahasia", "terkejut", "tercengang",
-        "bikin kaget", "tidak akan percaya", "baca sampai habis",
+        "viral",
+        "gila",
+        "mencengangkan",
+        "rahasia",
+        "terkejut",
+        "tercengang",
+        "bikin kaget",
+        "tidak akan percaya",
+        "baca sampai habis",
     ];
-    let clickbait_hits = clickbait_keywords.iter().filter(|k| lower.contains(*k)).count();
+    let clickbait_hits = clickbait_keywords
+        .iter()
+        .filter(|k| lower.contains(*k))
+        .count();
     if clickbait_hits > 0 {
         return (
             Verdict::Clickbait,
@@ -453,7 +513,10 @@ fn classify_with_rag(claim: &str, rag_verdict: Option<&str>, _threshold: f64) ->
     let buzzer_keywords = ["share", "viralkan", "sebarkan", "bagikan", "forward"];
     let hoax_hits = hoax_keywords.iter().filter(|k| lower.contains(*k)).count();
     let valid_hits = valid_keywords.iter().filter(|k| lower.contains(*k)).count();
-    let buzzer_hits = buzzer_keywords.iter().filter(|k| lower.contains(*k)).count();
+    let buzzer_hits = buzzer_keywords
+        .iter()
+        .filter(|k| lower.contains(*k))
+        .count();
     if buzzer_hits > hoax_hits.max(valid_hits) {
         return (
             Verdict::Buzzer,
@@ -462,11 +525,23 @@ fn classify_with_rag(claim: &str, rag_verdict: Option<&str>, _threshold: f64) ->
         );
     }
     if hoax_hits > valid_hits {
-        (Verdict::Hoax, (0.55 + 0.05 * hoax_hits as f64).min(0.9), "Heuristic: hoax keywords detected.".into())
+        (
+            Verdict::Hoax,
+            (0.55 + 0.05 * hoax_hits as f64).min(0.9),
+            "Heuristic: hoax keywords detected.".into(),
+        )
     } else if valid_hits > hoax_hits {
-        (Verdict::Valid, (0.55 + 0.05 * valid_hits as f64).min(0.9), "Heuristic: valid keywords detected.".into())
+        (
+            Verdict::Valid,
+            (0.55 + 0.05 * valid_hits as f64).min(0.9),
+            "Heuristic: valid keywords detected.".into(),
+        )
     } else {
-        (Verdict::Unverifiable, 0.4, "Heuristic: insufficient signal.".into())
+        (
+            Verdict::Unverifiable,
+            0.4,
+            "Heuristic: insufficient signal.".into(),
+        )
     }
 }
 

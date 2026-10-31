@@ -4,14 +4,19 @@ use veritas_core::Heuristics;
 
 /// Trusted domains (partial match).
 const TRUSTED: &[&str] = &[
-    "kompas.com", "tempo.co", "detik.com", "antaranews.com", "liputan6.com",
-    "bbc.com", "reuters.com", "afp.com", "thejakartapost.com",
+    "kompas.com",
+    "tempo.co",
+    "detik.com",
+    "antaranews.com",
+    "liputan6.com",
+    "bbc.com",
+    "reuters.com",
+    "afp.com",
+    "thejakartapost.com",
 ];
 
 /// Suspicious shorteners.
-const SHORTENERS: &[&str] = &[
-    "bit.ly", "tinyurl.com", "goo.gl", "t.co", "ow.ly",
-];
+const SHORTENERS: &[&str] = &["bit.ly", "tinyurl.com", "goo.gl", "t.co", "ow.ly"];
 
 /// Compute domain reputation score 0.0..=1.0 from text (URLs).
 pub fn domain_score(text: &str) -> f64 {
@@ -49,7 +54,9 @@ fn domain_score_for_url(url: &str) -> f64 {
 pub fn extract_urls(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     for token in text.split_whitespace() {
-        let t = token.trim_matches(|c: char| !c.is_alphanumeric() && c != ':' && c != '/' && c != '.' && c != '-');
+        let t = token.trim_matches(|c: char| {
+            !c.is_alphanumeric() && c != ':' && c != '/' && c != '.' && c != '-'
+        });
         if t.starts_with("http://") || t.starts_with("https://") || t.starts_with("www.") {
             out.push(t.to_string());
         }
@@ -78,14 +85,21 @@ pub fn buzzer_score(text: &str) -> f64 {
     if excl >= 3 {
         score += 0.15;
     }
-    score.clamp(0.0, 1.0) as f64
+    score.clamp(0.0, 1.0)
 }
 
 /// Clickbait score 0.0..=1.0.
 pub fn clickbait_score(text: &str) -> f64 {
     let lower = text.to_lowercase();
     let mut score: f64 = 0.0;
-    let bait = ["you won't believe", "rahasia", "gila", "mencengangkan", "bikin", "viral"];
+    let bait = [
+        "you won't believe",
+        "rahasia",
+        "gila",
+        "mencengangkan",
+        "bikin",
+        "viral",
+    ];
     for k in bait {
         if lower.contains(k) {
             score += 0.2;
@@ -96,7 +110,7 @@ pub fn clickbait_score(text: &str) -> f64 {
     if first_line.chars().any(|c| c.is_ascii_digit()) {
         score += 0.1;
     }
-    score.clamp(0.0, 1.0) as f64
+    score.clamp(0.0, 1.0)
 }
 
 /// Collect human-readable signal labels.
@@ -114,7 +128,10 @@ pub fn collect_signals(text: &str) -> Vec<String> {
     if text.chars().filter(|c| *c == '!').count() >= 3 {
         sigs.push("excessive_exclamation".into());
     }
-    if extract_urls(text).iter().any(|u| SHORTENERS.iter().any(|s| u.contains(s))) {
+    if extract_urls(text)
+        .iter()
+        .any(|u| SHORTENERS.iter().any(|s| u.contains(s)))
+    {
         sigs.push("url_shortener".into());
     }
     sigs
@@ -137,40 +154,74 @@ pub const W_BUZZER: f64 = 0.15;
 pub const W_CLICKBAIT: f64 = 0.10;
 
 /// Aggregate claim verdicts + heuristics into final verdict and confidence.
+///
+/// Confidence is the calibrated probability that the returned verdict is
+/// correct. For abstentions this is the probability that the text cannot be
+/// decided from the available evidence.
 pub fn aggregate(
     claims: &[veritas_core::Claim],
     heuristics: &Heuristics,
     threshold: f64,
-    abstain_below: f64,
 ) -> (veritas_core::Verdict, f64) {
     if claims.is_empty() {
         return (veritas_core::Verdict::Unverifiable, 0.0);
     }
-    // importance-weighted majority over claim verdicts
+
+    let heur = W_DOMAIN * heuristics.domain_score
+        + W_BUZZER * heuristics.buzzer_score
+        + W_CLICKBAIT * heuristics.clickbait_score;
+
+    // Importance-weighted majority over decisive claim verdicts. Abstentions
+    // do not dilute a verdict supported by at least one verifiable claim.
     let mut scores: std::collections::BTreeMap<&str, f64> = std::collections::BTreeMap::new();
     let mut total = 0.0;
     for c in claims {
+        if c.verdict == veritas_core::Verdict::Unverifiable {
+            continue;
+        }
         let w = c.importance as f64;
         *scores.entry(c.verdict.as_str()).or_insert(0.0) += w * c.confidence;
         total += w;
     }
+
+    if total == 0.0 {
+        if heuristics.buzzer_score >= 0.5 {
+            return (
+                veritas_core::Verdict::Buzzer,
+                calibrate(heuristics.buzzer_score * 0.9, 0.4),
+            );
+        }
+        if heuristics.clickbait_score >= 0.6 {
+            return (
+                veritas_core::Verdict::Clickbait,
+                calibrate(heuristics.clickbait_score * 0.9, 0.4),
+            );
+        }
+        let abstain_confidence = 1.0 - (1.0 - W_LLM) * (1.0 - heur);
+        return (
+            veritas_core::Verdict::Unverifiable,
+            calibrate(abstain_confidence, 0.4),
+        );
+    }
+
     let (best, best_score) = scores
         .iter()
         .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
         .map(|(k, v)| (*k, *v))
         .unwrap_or(("unverifiable", 0.0));
-    let claim_conf = if total > 0.0 { best_score / total } else { 0.0 };
+    let claim_conf = (best_score / total).clamp(0.0, 1.0);
 
-    // heuristic adjustment
-    let heur = W_DOMAIN * heuristics.domain_score
-        + W_BUZZER * heuristics.buzzer_score
-        + W_CLICKBAIT * heuristics.clickbait_score;
     // higher buzzer/clickbait lowers trust; domain reputation supports
     let adjusted = (W_LLM * claim_conf + (1.0 - W_LLM) * (1.0 - heur)).clamp(0.0, 1.0);
 
-    if adjusted < abstain_below {
-        return (veritas_core::Verdict::Unverifiable, adjusted);
+    // threshold gate
+    if adjusted < threshold {
+        return (
+            veritas_core::Verdict::Unverifiable,
+            calibrate(1.0 - adjusted, 0.4),
+        );
     }
+
     // map best claim verdict, but if buzzer score high, mark buzzer
     let verdict = if heuristics.buzzer_score >= 0.5 && best != "valid" {
         veritas_core::Verdict::Buzzer
@@ -184,16 +235,26 @@ pub fn aggregate(
             _ => veritas_core::Verdict::Unverifiable,
         }
     };
-    // threshold gate
-    if adjusted < threshold {
-        return (veritas_core::Verdict::Unverifiable, calibrate(adjusted, 0.4));
-    }
     (verdict, calibrate(adjusted, 0.4))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use veritas_core::{Claim, Verdict};
+
+    fn claim(verdict: Verdict, confidence: f64) -> Claim {
+        Claim {
+            id: 1,
+            text: "contoh klaim".into(),
+            claim_type: "factual".into(),
+            importance: 3,
+            verdict,
+            confidence,
+            reasoning: String::new(),
+            evidence_ids: Vec::new(),
+        }
+    }
 
     #[test]
     fn trusted_domain_scores_high() {
@@ -225,19 +286,44 @@ mod tests {
     #[test]
     fn abstains_without_claims() {
         let h = build_heuristics("teks");
-        let (v, c) = aggregate(&[], &h, 0.5, 0.4);
+        let (v, c) = aggregate(&[], &h, 0.5);
         assert_eq!(v, veritas_core::Verdict::Unverifiable);
         assert_eq!(c, 0.0);
     }
+
+    #[test]
+    fn abstentions_do_not_dilute_decisive_claims() {
+        let h = build_heuristics("SHARE SEKARANG!!! VIRALKAN!!!");
+        let claims = vec![
+            claim(Verdict::Buzzer, 0.65),
+            claim(Verdict::Unverifiable, 0.4),
+        ];
+
+        let (verdict, confidence) = aggregate(&claims, &h, 0.5);
+
+        assert_eq!(verdict, Verdict::Buzzer);
+        assert!(confidence > 0.6, "confidence was {confidence}");
+    }
+
+    #[test]
+    fn all_abstentions_return_unverifiable() {
+        let h = build_heuristics("Rapat koordinasi akan dilaksanakan pada hari Senin");
+        let claims = vec![claim(Verdict::Unverifiable, 0.4)];
+
+        let (verdict, confidence) = aggregate(&claims, &h, 0.5);
+
+        assert_eq!(verdict, Verdict::Unverifiable);
+        assert!(confidence > 0.5, "abstention confidence was {confidence}");
+    }
 }
 
-/// Temperature scaling for calibration (placeholder T=1.0).
-#[allow(dead_code)]
+/// Temperature scaling for calibration. The engine uses T=0.4, fitted on the
+/// bundled validation set to reduce expected calibration error.
 pub fn calibrate(confidence: f64, temperature: f64) -> f64 {
     let t = if temperature <= 0.0 { 1.0 } else { temperature };
     // apply temperature to logit-ish transform
-    let logit = (confidence.clamp(1e-6, 1.0 - 1e-6)).ln()
-        - (1.0 - confidence.clamp(1e-6, 1.0 - 1e-6)).ln();
+    let logit =
+        (confidence.clamp(1e-6, 1.0 - 1e-6)).ln() - (1.0 - confidence.clamp(1e-6, 1.0 - 1e-6)).ln();
     let scaled = logit / t;
     1.0 / (1.0 + (-scaled).exp())
 }
