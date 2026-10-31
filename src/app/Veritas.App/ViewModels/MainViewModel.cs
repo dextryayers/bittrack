@@ -49,6 +49,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<string> ResultSignals { get; } = new();
     public ObservableCollection<HistoryEntry> History { get; } = new();
 
+    public string[] ModelOptions { get; } = { "qwen2.5-3b-q4", "qwen2.5-7b-q4" };
+    public string[] LanguageOptions { get; } = { "id", "en" };
+    public string[] ThemeOptions { get; } = { "system", "light", "dark" };
+
+    [ObservableProperty]
+    private bool _hasHistory;
+
     public AppSettings Settings { get; }
 
     public MainViewModel()
@@ -61,6 +68,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _historyService = new HistoryService(Path.Combine(baseDir, "history.sqlite"));
         _settingsService = new SettingsService(Path.Combine(baseDir, "settings.json"));
         Settings = _settingsService.Load();
+        ApplyTheme(Settings.Theme);
         LoadHistory();
     }
 
