@@ -18,6 +18,21 @@ Format follows Keep a Changelog. Versioning follows Semantic Versioning.
 - Installer scaffolding for Windows (Inno Setup, Velopack), macOS (DMG), Linux (AppImage).
 - Release workflow with cross-platform build matrix.
 
+### Changed
+
+- Claim extraction now retains short imperative fragments such as share or
+  viralkan commands.
+- Aggregation counts only decisive claim verdicts; abstentions no longer dilute
+  a supported verdict.
+- Abstention confidence now reports the calibrated probability that the text
+  cannot be decided, instead of zero.
+- UI automatically opens the result page after analysis, persists the selected
+  theme at startup, sanitizes invalid settings, and formats history timestamps.
+- Settings and history pages use the full content width; sidebar navigation has
+  vector icons and the home view has a gradient hero.
+- Added `scripts/calibrate.py` for temperature sweep analysis.
+- Benchmark metrics updated to accuracy 1.000, macro-F1 1.000, ECE 0.104.
+
 ### Known Limitations
 
 - LLM inference (GGUF) is feature-gated and not enabled by default; heuristic baseline is active.

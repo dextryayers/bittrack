@@ -30,8 +30,10 @@ required.
 - Valid: consistent with verified sources.
 - Unverifiable: insufficient evidence to decide.
 
-Confidence is calibrated. A low confidence result is an invitation to verify
-manually, not a final judgment.
+Confidence is calibrated. For substantive verdicts it estimates the probability
+that the verdict is correct. For unverifiable results it estimates the
+probability that the text cannot be decided from the available evidence. A low
+confidence result is an invitation to verify manually, not a final judgment.
 
 ## History
 

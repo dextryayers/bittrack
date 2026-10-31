@@ -26,8 +26,9 @@ initiated.
 
 ## How accurate is it?
 
-On the bundled benchmark, the alpha reports accuracy 0.972 and macro-F1 0.972.
-The benchmark is small and must be expanded before any production claim.
+On the bundled benchmark, the alpha reports accuracy 1.000 and macro-F1 1.000.
+The benchmark has 36 samples and was used during development, so it is a
+regression baseline rather than an unbiased held-out estimate.
 
 ## How do I report a false verdict?
 

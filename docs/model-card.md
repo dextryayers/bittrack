@@ -12,7 +12,14 @@ is feature-gated behind the `llm` Cargo feature.
 - Fact store: SQLite table with verdict, source, URL, date, and embedding blob.
 - Retrieval: cosine similarity, top-3, score threshold 0.35.
 - Classifier: keyword and pattern heuristics with RAG override at score >= 0.7.
-- Aggregation: weighted fusion with temperature calibration (T=0.4).
+- Aggregation: importance-weighted claim vote over decisive verdicts, fused with
+  domain, buzzer, and clickbait signals, then temperature calibration (T=0.4).
+  Abstentions do not dilute a verdict supported by at least one verifiable claim.
+  When every claim abstains, strong buzzer or clickbait signals can still drive
+  the verdict.
+- Confidence: calibrated probability that the returned verdict is correct. For
+  unverifiable results it is the probability that the text cannot be decided
+  from the available evidence.
 
 ## Intended Use
 
@@ -30,13 +37,15 @@ is feature-gated behind the `llm` Cargo feature.
 
 Benchmark: `data/eval/benchmark.jsonl`, 36 labeled samples, six classes.
 
-- Accuracy: 0.972
-- Macro-F1: 0.972
-- ECE: 0.072
-- Latency p50: 0.596 ms, p95: 0.705 ms (debug build, this machine)
+- Accuracy: 1.000
+- Macro-F1: 1.000
+- ECE: 0.104
+- Latency p50: 0.70 ms, p95: 1.21 ms (debug build, this machine)
 
-The benchmark is small. Treat these numbers as a regression baseline, not a
-production guarantee.
+The benchmark is a development regression set that was also used to tune the
+heuristics and calibration. Treat these numbers as a regression baseline, not a
+held-out production estimate. Expand the set with independently sourced samples
+before making external accuracy claims.
 
 ## Limitations
 
