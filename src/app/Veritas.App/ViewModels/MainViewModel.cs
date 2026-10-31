@@ -68,8 +68,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _historyService = new HistoryService(Path.Combine(baseDir, "history.sqlite"));
         _settingsService = new SettingsService(Path.Combine(baseDir, "settings.json"));
         Settings = _settingsService.Load();
+        SanitizeSettings();
         ApplyTheme(Settings.Theme);
         LoadHistory();
+    }
+
+    private void SanitizeSettings()
+    {
+        if (Settings.ModelId is not ("qwen2.5-3b-q4" or "qwen2.5-7b-q4"))
+        {
+            Settings.ModelId = ModelOptions[0];
+        }
+        if (Settings.Language is not ("id" or "en"))
+        {
+            Settings.Language = LanguageOptions[0];
+        }
+        if (Settings.Theme is not ("system" or "light" or "dark"))
+        {
+            Settings.Theme = ThemeOptions[0];
+        }
+        Settings.Threshold = Math.Clamp(Settings.Threshold, 0.0, 1.0);
+        _settingsService.Save(Settings);
     }
 
     [RelayCommand]
@@ -110,6 +129,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             HasResult = true;
             ResultOpacity = 1;
+            SelectedPageIndex = 1;
             Status = "Selesai.";
             _historyService.Add(InputText, resp.Verdict, resp.Confidence, resp.Summary);
             LoadHistory();
@@ -144,6 +164,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             History.Add(h);
         }
+        HasHistory = History.Count > 0;
     }
 
     [RelayCommand]
@@ -157,6 +178,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void SaveSettings()
     {
         _settingsService.Save(Settings);
+        ApplyTheme(Settings.Theme);
         Status = "Pengaturan disimpan.";
     }
 
@@ -168,12 +190,28 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             return;
         }
-        var next = app.RequestedThemeVariant == Avalonia.Styling.ThemeVariant.Dark
+        var next = app.ActualThemeVariant == Avalonia.Styling.ThemeVariant.Dark
             ? Avalonia.Styling.ThemeVariant.Light
             : Avalonia.Styling.ThemeVariant.Dark;
         app.RequestedThemeVariant = next;
         Settings.Theme = next == Avalonia.Styling.ThemeVariant.Dark ? "dark" : "light";
         _settingsService.Save(Settings);
+        Status = "Tema diperbarui.";
+    }
+
+    private static void ApplyTheme(string theme)
+    {
+        var app = Avalonia.Application.Current;
+        if (app is null)
+        {
+            return;
+        }
+        app.RequestedThemeVariant = theme switch
+        {
+            "dark" => Avalonia.Styling.ThemeVariant.Dark,
+            "light" => Avalonia.Styling.ThemeVariant.Light,
+            _ => Avalonia.Styling.ThemeVariant.Default,
+        };
     }
 
     public void Dispose()

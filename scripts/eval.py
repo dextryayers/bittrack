@@ -89,6 +89,7 @@ def main():
     pairs = []
     correct = 0
     failures = []
+    predictions = []
 
     for s in samples:
         resp = analyze(lib, handle, s["text"])
@@ -98,6 +99,13 @@ def main():
         ok = pred == s["label"]
         correct += 1 if ok else 0
         pairs.append((conf, ok))
+        predictions.append({
+            "text": s["text"],
+            "label": s["label"],
+            "pred": pred,
+            "confidence": conf,
+            "correct": ok,
+        })
         if not ok:
             failures.append({"text": s["text"], "label": s["label"], "pred": pred, "confidence": conf})
 
@@ -111,6 +119,7 @@ def main():
         "per_class": metrics,
         "confusion": {a: dict(confusion[a]) for a in labels},
         "failures": failures,
+        "predictions": predictions,
     }
 
     text = json.dumps(report, indent=2, ensure_ascii=False)

@@ -297,8 +297,7 @@ pub unsafe extern "C" fn veritas_analyze(
 
         let heur_signals = heuristics::build_heuristics(&normalized);
 
-        let (verdict, confidence) =
-            heuristics::aggregate(&claims, &heur_signals, opts.threshold, 0.4);
+        let (verdict, confidence) = heuristics::aggregate(&claims, &heur_signals, opts.threshold);
 
         let resp = AnalyzeResponse {
             verdict,
@@ -450,11 +449,12 @@ fn normalize_text(input: &str) -> String {
 }
 
 fn split_claims(text: &str, max: usize) -> Vec<String> {
-    // Simple sentence split. Real impl uses LLM claim extraction.
+    // Sentence split tuned for short social posts: keep imperative fragments
+    // such as "SHARE SEKARANG" instead of dropping them as noise.
     let mut claims = Vec::new();
     for part in text.split(['.', '!', '?']) {
         let t = part.trim();
-        if t.len() >= 20 && claims.len() < max {
+        if t.chars().count() >= 12 && claims.len() < max {
             claims.push(t.to_string());
         }
     }

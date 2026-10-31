@@ -164,6 +164,35 @@
             <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
         </Style>
 
+        <Style Selector="Path.navIcon">
+            <Setter Property="Width" Value="18" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="Stretch" Value="Uniform" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
+        </Style>
+
+        <Style Selector="ListBoxItem.nav:selected Path.navIcon">
+            <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
+        </Style>
+
+        <Style Selector="ListBoxItem.nav:selected TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style Selector="Border.lift">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <Style Selector="Border.lift:pointerover">
+            <Setter Property="RenderTransform" Value="translateY(-3px)" />
+        </Style>
+
         <Style Selector="ProgressBar">
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Height" Value="8" />

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
@@ -10,7 +11,13 @@ public sealed record HistoryEntry(
     double Confidence,
     string Summary,
     string CreatedAt
-);
+)
+{
+    public string CreatedAtDisplay =>
+        DateTime.TryParse(CreatedAt, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed)
+            ? parsed.ToLocalTime().ToString("dd MMM yyyy HH:mm", CultureInfo.InvariantCulture)
+            : CreatedAt;
+}
 
 public sealed class HistoryService : IDisposable
 {
