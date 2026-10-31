@@ -3,7 +3,7 @@
              xmlns:vm="using:Veritas.App.ViewModels"
              x:Class="Veritas.App.Views.HistoryView"
              x:DataType="vm:MainViewModel">
-    <Grid Margin="32" RowDefinitions="Auto,*,Auto" MaxWidth="980" HorizontalAlignment="Center">
+    <Grid Margin="32" RowDefinitions="Auto,*,Auto" MaxWidth="980">
         <StackPanel Grid.Row="0" Spacing="12" Margin="0,0,0,20">
             <TextBlock Text="Riwayat" Classes="h1" />
             <TextBlock Text="Semua analisis disimpan lokal di perangkat ini." Classes="muted" />
@@ -14,22 +14,31 @@
         </StackPanel>
 
         <ScrollViewer Grid.Row="1">
-            <ItemsControl ItemsSource="{Binding History}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border Classes="card" Margin="0,0,0,12">
-                            <StackPanel Spacing="6">
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <TextBlock Text="{Binding Verdict}" FontWeight="Bold" />
-                                    <TextBlock Text="{Binding Confidence, StringFormat='{}{0:P0}'}" Classes="muted" />
-                                    <TextBlock Text="{Binding CreatedAt}" FontSize="11" Classes="muted" />
+            <StackPanel Spacing="12">
+                <Border Classes="card" IsVisible="{Binding !HasHistory}">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Belum ada riwayat" Classes="h2" />
+                        <TextBlock Text="Jalankan analisis pertama Anda. Hasilnya akan tersimpan lokal di sini." Classes="muted" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <ItemsControl ItemsSource="{Binding History}" IsVisible="{Binding HasHistory}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Classes="card" Margin="0,0,0,12">
+                                <StackPanel Spacing="6">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <TextBlock Text="{Binding Verdict}" FontWeight="Bold" />
+                                        <TextBlock Text="{Binding Confidence, StringFormat='{}{0:P0}'}" Classes="muted" />
+                                        <TextBlock Text="{Binding CreatedAtDisplay}" FontSize="11" Classes="muted" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
                                 </StackPanel>
-                                <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
-                            </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
         </ScrollViewer>
 
         <TextBlock Grid.Row="2" Text="{Binding Status}" Classes="muted" Margin="0,12,0,0" />

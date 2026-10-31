@@ -9,7 +9,7 @@
     </UserControl.Resources>
 
     <ScrollViewer>
-        <StackPanel Margin="32" Spacing="20" MaxWidth="980" HorizontalAlignment="Center">
+        <StackPanel Margin="32" Spacing="20" MaxWidth="980">
             <StackPanel Spacing="4">
                 <TextBlock Text="Hasil analisis" Classes="h1" />
                 <TextBlock Text="Setiap verdict disertai confidence, klaim, bukti, dan sinyal yang dapat diaudit." Classes="muted" />
