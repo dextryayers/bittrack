@@ -1,0 +1,18 @@
+# Rust
+target/
+
+# .NET
+bin/
+obj/
+*.user
+
+# Models and data
+models/
+*.gguf
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

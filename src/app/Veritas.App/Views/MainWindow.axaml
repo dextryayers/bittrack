@@ -1,0 +1,81 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Veritas.App.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="720"
+        x:Class="Veritas.App.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Icon="/Assets/logo.png"
+        Title="Veritas - Hoax &amp; Buzzer Detector"
+        Width="960" Height="720">
+
+    <Design.DataContext>
+        <vm:MainViewModel />
+    </Design.DataContext>
+
+    <Grid RowDefinitions="Auto,*,Auto" Margin="24">
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12" Margin="0,0,0,16">
+            <Image Source="/Assets/logo.png" Width="40" Height="40" />
+            <StackPanel>
+                <TextBlock Text="Veritas" FontSize="24" FontWeight="Bold" />
+                <TextBlock Text="Deteksi berita hoax dan buzzer secara lokal" FontSize="12" Opacity="0.7" />
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Body -->
+        <ScrollViewer Grid.Row="1">
+            <StackPanel Spacing="16">
+                <TextBox Text="{Binding InputText}"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         MinHeight="160"
+                         PlaceholderText="Paste teks berita atau artikel di sini..." />
+
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Button Content="Analisis"
+                            Command="{Binding AnalyzeCommand}"
+                            IsEnabled="{Binding !IsBusy}"
+                            Padding="20,8" />
+                    <Button Content="Bersihkan"
+                            Command="{Binding ClearCommand}"
+                            Padding="20,8" />
+                    <ProgressBar IsVisible="{Binding IsBusy}"
+                                 IsIndeterminate="True"
+                                 Width="200" />
+                </StackPanel>
+
+                <TextBlock Text="{Binding Status}" Opacity="0.8" />
+
+                <Border BorderBrush="#333" BorderThickness="1" CornerRadius="8" Padding="16"
+                        IsVisible="{Binding HasResult}">
+                    <StackPanel Spacing="8">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Verdict:" FontWeight="Bold" />
+                            <TextBlock Text="{Binding ResultVerdict}" FontWeight="Bold" />
+                            <TextBlock Text="{Binding ResultConfidence, StringFormat='({0:P0})'}" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding ResultSummary}" TextWrapping="Wrap" />
+                        <TextBlock Text="Klaim:" FontWeight="Bold" Margin="0,8,0,0" />
+                        <ItemsControl ItemsSource="{Binding ResultClaims}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,4" Padding="8" CornerRadius="4" Background="#11111111">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding Verdict}" FontSize="11" Opacity="0.7" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Footer -->
+        <TextBlock Grid.Row="2" Text="V1.0-Alpha | Offline | Tanpa backend" FontSize="10" Opacity="0.5" Margin="0,8,0,0" />
+    </Grid>
+</Window>

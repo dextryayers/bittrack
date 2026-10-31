@@ -1,0 +1,31 @@
+[package]
+name = "veritas-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "veritas_engine"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+veritas-core = { path = "../veritas-core" }
+veritas-models = { path = "../veritas-models" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }
+sha2 = { workspace = true }
+
+# LLM inference (GGUF). Feature-gated to keep builds light when not needed.
+llama-cpp-2 = { version = "0.1", optional = true }
+
+[features]
+default = []
+llm = ["dep:llama-cpp-2"]
+
+[build-dependencies]
+cbindgen = { workspace = true }
