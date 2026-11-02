@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
@@ -322,7 +323,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            var resp = await Task.Run(() => _engine.Analyze(request, ReportProgress));
+            AnalyzeResponse resp;
+            // Serialize native calls: a model switch disposes and replaces the
+            // engine handle, and using the old pointer mid-inference would crash
+            // the process rather than return an error.
+            await _modelGate.WaitAsync();
+            try
+            {
+                resp = await Task.Run(() => _engine.Analyze(request, ReportProgress));
+            }
+            finally
+            {
+                _modelGate.Release();
+            }
             ApplyResult(resp, navigate: true);
             _historyService.Add(
                 historyInput,
@@ -754,7 +767,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var list = await Task.Run(() => _engine.ListModels());
+            IReadOnlyList<ModelInfo> list;
+            await _modelGate.WaitAsync();
+            try
+            {
+                list = await Task.Run(() => _engine.ListModels());
+            }
+            finally
+            {
+                _modelGate.Release();
+            }
             string previousId = SelectedModel?.Id ?? Settings.ModelId;
             _suppressModelReload = true;
             try
@@ -802,6 +824,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         else if (IsModelLoading)
         {
             ModelLoadStatus = "Memuat model...";
+        }
+        else if (!HasUsableModel)
+        {
+            ModelLoadStatus = "Model belum dimuat.";
         }
     }
 
@@ -925,7 +951,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        SelectedModel = uploaded;
+        _suppressModelReload = true;
+        try
+        {
+            SelectedModel = uploaded;
+            Settings.ModelId = uploaded.Id;
+            _settingsService.Save(Settings);
+        }
+        finally
+        {
+            _suppressModelReload = false;
+        }
         await SwitchModelAsync(uploaded);
     }
 
@@ -1085,6 +1121,32 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ApplyModelSummary(value);
         if (_suppressModelReload)
         {
+            return;
+        }
+        if (IsImportingModel)
+        {
+            // The engine handle may be disposed while the import inspects or
+            // copies a file; apply the new selection after the import finishes.
+            return;
+        }
+        if (!value.Compatible)
+        {
+            HasUsableModel = false;
+            ModelLoadStatus = "Model ini tidak dapat dipakai untuk analisis.";
+            Status = $"Model {value.Name} tidak didukung; pilih model generatif lain.";
+            var fallback = Models.FirstOrDefault(m => m.Installed && m.Compatible);
+            if (fallback is not null && !ReferenceEquals(fallback, value))
+            {
+                _suppressModelReload = true;
+                try
+                {
+                    SelectedModel = fallback;
+                }
+                finally
+                {
+                    _suppressModelReload = false;
+                }
+            }
             return;
         }
 

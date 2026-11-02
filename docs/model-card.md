@@ -8,16 +8,20 @@ V1.0-Alpha
 
 - Inference: [llama.cpp](https://github.com/ggml-org/llama.cpp) via the
   `llama-cpp-2` Rust bindings. CPU only, no GPU requirement.
-- Default model: Qwen 2.5 3B Instruct, Q4_K_M quantization, 1,929,903,008 bytes.
-  Source blob: `registry.ollama.ai/v2/library/qwen2.5`, digest
-  `sha256:5ee4f07cdb9beadbbb293e85803c569b01bd37ed059d2715faa7bb405f31caa6`.
-- Optional models: Qwen 2.5 7B Instruct Q4_K_M (4.68 GB), Qwen 2.5 1.5B
-  Instruct Q4_K_M (986 MB), Qwen 2.5 0.5B Instruct Q4_K_M (398 MB).
+- Model: no model is bundled or downloaded by the app. The user supplies any
+  llama.cpp-compatible GGUF file through Pengaturan. The engine reads its
+  metadata first and only then loads the weights, so a malformed or
+  architecture-mismatched file is rejected before it can produce a verdict.
+- Verified development model: Qwen 2.5 3B Instruct, Q4_K_M quantization,
+  1,929,903,008 bytes, 32K trained context, chat template present. Model
+  weights are not distributed with Veritas; their licence applies separately.
 - Poster OCR: Windows.Media.Ocr, running on device.
 - Evidence retrieval: Bing HTML search restricted to trusted hosts, plus the
   Indonesian Wikipedia API.
-- Decoding: model chat template, JSON-schema grammar, greedy first attempt,
-  one fixed-seed retry, 300-second ceiling.
+- Decoding: the model's own chat template, greedy first attempt, one fixed-seed
+  retry, 300-second ceiling. JSON is requested in the prompt and parsed
+  strictly; grammar-constrained decoding is disabled because it crashed
+  llama.cpp on small models.
 
 ## Intended Use
 
@@ -35,16 +39,23 @@ V1.0-Alpha
 
 ## How the Verdict Is Produced
 
-1. The engine resolves the input: URL fetch and article extraction, pasted text,
-   OCR poster text, and comments.
-2. It retrieves up to five evidence items from trusted hosts. Evidence is shown
+1. The engine loads and validates the selected GGUF model before any network
+   work, so a missing or broken model fails fast instead of producing a
+   plausible-looking answer.
+2. It resolves the input: URL fetch and article extraction, pasted text, OCR
+   poster text, and comments.
+3. It retrieves up to five evidence items from trusted hosts. Evidence is shown
    to the model with numbered ids and is also returned to the user.
-3. The local model receives the text and evidence. Its output is constrained to
-   a JSON schema containing verdict, truth score, confidence, summary, claims,
-   and red flags.
-4. The engine clamps ranges, removes fabricated evidence ids, applies the
-   confidence threshold, and records warnings.
-5. Heuristic signals are computed only for display. They cannot change the
+4. The local model receives the text and evidence and is asked for a JSON object
+   containing verdict, truth score, confidence, summary, claims, and red flags.
+5. The engine parses that object, clamps ranges, drops fabricated evidence ids,
+   and applies deterministic grounding: no evidence caps confidence and demotes
+   decisive verdicts, a hoax verdict without a fact-check result is capped, and
+   claims that cite no evidence reduce confidence.
+6. The confidence threshold is applied, and every cap or contradiction is
+   recorded as a warning. Optional strict verification runs a second inference
+   with a fixed seed and demotes the result if the two verdicts disagree.
+7. Heuristic signals are computed only for display. They cannot change the
    verdict.
 
 If the model is missing, fails to load, times out, or returns unparsable output
@@ -70,10 +81,11 @@ No held-out evaluation of the GGUF pipeline exists yet. The 36-sample
 baseline; its previous accuracy and macro-F1 values do not describe this system
 and must not be quoted as model accuracy.
 
-Known measured facts on the development machine (Intel i5-4570, 4 cores, 16 GB
-RAM, CPU-only, Q4_K_M 3B):
+Known facts on the development machine (Intel i5-4570, 4 cores, 16 GB RAM,
+CPU-only, Q4_K_M 3B):
 
-- Model file size: 1,929,903,008 bytes, SHA-256 verified.
+- Model file size: 1,929,903,008 bytes. The GGUF header reports 32,768-token
+  context, chat template present, quantization Q4_K_M.
 - End-to-end latency and verdict quality must be measured with
   `cargo test -p veritas-engine real_model -- --ignored --nocapture`; record the
   output before publishing performance claims.
@@ -94,6 +106,11 @@ RAM, CPU-only, Q4_K_M 3B):
 - No calibration of the model's confidence has been performed on a labeled
   Indonesian set. The threshold is a user-set guardrail, not a calibrated
   probability.
+- Upload validation checks GGUF metadata and a real load, not output quality.
+  A file can load and still be a poor fact-checking model.
+- Context length is honoured per model: long inputs are truncated to a budget
+  derived from the loaded model's `n_ctx_train`, and the truncation is not a
+  substitute for reading the omitted text.
 
 ## Ethical Notes
 
@@ -104,6 +121,6 @@ person or organization lied.
 
 ## Provenance
 
-- Engine prompt version: `veritas-id-v2`.
+- Engine prompt version: `veritas-id-v3`.
 - Model id and prompt version are recorded in the audit payload of every result.
 - Input SHA-256 is recorded for reproducibility.

@@ -9,8 +9,12 @@ V1.0-Alpha.
 
 - UI: C# + Avalonia (MVVM), sidebar navigation, poster tab, dark/light themes
 - Engine: Rust native library (cdylib) loaded in-process via C ABI
-- Inference: local GGUF model through llama.cpp (`llama-cpp-2`), JSON-schema
-  constrained output. Default model: Qwen 2.5 3B Instruct Q4_K_M.
+- Inference: local GGUF model through llama.cpp (`llama-cpp-2`). The model is
+  uploaded and validated in Pengaturan; the engine reads GGUF metadata, rejects
+  incompatible or embedding-only files, then loads the weights to prove the file
+  works. JSON output is requested in the prompt and parsed strictly; GBNF
+  grammar constraints are disabled because they crashed llama.cpp on small
+  models.
 - Evidence: live Bing search restricted to trusted Indonesian fact-check,
   newsroom, and government hosts, plus the Indonesian Wikipedia API.
 - Poster OCR: Windows.Media.Ocr, on-device, no third-party runtime.
@@ -42,12 +46,29 @@ dotnet build Veritas.App/Veritas.App.csproj
 Copy the native library next to the app binary before running:
 
 ```
-copy src\engine\target\debug\veritas_engine.dll src\app\Veritas.App\bin\Debug\net10.0-windows10.0.19041.0\
+copy src\engine\target\debug\veritas_engine.dll src\app\Veritas.App\bin\Debug\net10.0\
 ```
 
-Download the default model from the app's Pengaturan tab (1.93 GB, resumed and
-SHA-256 verified), or place a GGUF file in
-`%LOCALAPPDATA%\Veritas\models\qwen2.5-3b-instruct-q4_k_m.gguf`.
+## Models
+
+There is no in-app downloader. Upload any llama.cpp-compatible `.gguf` in
+Pengaturan (drag and drop works), or place the file directly in
+`%LOCALAPPDATA%\Veritas\models\`. The app shows the architecture, quantization,
+context length, and chat-template status it read from the file header, copies the
+file atomically, and then loads it once to confirm it is usable. A model that
+fails inspection or loading is rejected; it is never selected silently.
+
+Verified on the development machine: Qwen 2.5 3B Instruct Q4_K_M,
+1,929,903,008 bytes, 32K context, chat template present.
+
+## Honest limits
+
+- `confidence` and `truth_percentage` are uncalibrated model outputs. They are
+  not probabilities validated against a labelled Indonesian benchmark.
+- No held-out accuracy result exists for the GGUF pipeline. The old 36-sample
+  development score belonged to the removed heuristic baseline.
+- Evidence retrieval depends on public search and Wikipedia; thin evidence caps
+  confidence and can demote a decisive verdict to `unverifiable`.
 
 ## Real-model test
 
@@ -69,9 +90,14 @@ claim should be made until a fresh labeled set is evaluated.
 
 ## Installers
 
-- Windows: `installer/windows/build.ps1`, Inno Setup script `installer/windows/veritas.iss`
+Scripts exist under `installer/` but no packaged installer is checked in.
+
+- Windows: `installer/windows/build.ps1` needs Inno Setup 6 (`iscc`) and writes
+  `artifacts/windows/installer/Veritas-Setup-1.0.0-alpha.exe`.
 - macOS: `installer/macos/build.sh`
 - Linux: `installer/linux/build.sh`
+
+Until those artifacts are produced, run the app from source with `dotnet run`.
 
 ## Docs
 

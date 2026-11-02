@@ -130,7 +130,22 @@ impl Llm {
         let params = LlamaModelParams::default().with_n_gpu_layers(0);
         let model = LlamaModel::load_from_file(backend, path, &params)
             .map_err(|e| LlmError::Load(e.to_string()))?;
-        let template = model.chat_template(None).ok();
+        // Validate the template at load time. Some GGUFs embed a Jinja template
+        // that the current llama.cpp build cannot render; failing later, after
+        // the user has already selected the model, would look like a random
+        // analysis failure. Treat an unusable template as absent and fall back.
+        let template = model.chat_template(None).ok().filter(|candidate| {
+            let messages = [
+                LlamaChatMessage::new("system".into(), "test".into()),
+                LlamaChatMessage::new("user".into(), "test".into()),
+            ];
+            match messages {
+                [Ok(system), Ok(user)] => model
+                    .apply_chat_template(candidate, &[system, user], true)
+                    .is_ok(),
+                _ => false,
+            }
+        });
         let train_ctx = model.n_ctx_train();
         // Never ask llama.cpp for more context than the model was trained on.
         // Some small models ship 2K context; silently requesting 8K makes every
@@ -308,10 +323,9 @@ impl Llm {
 
 /// Whether `output` already contains a complete, parseable top-level JSON object.
 ///
-/// The grammar sampler permits EOG only after the object is complete, but the
-/// sampler can also keep going and feed a non-EOG token that drives the grammar
-/// into an empty stack, which aborts llama.cpp. Stopping as soon as the object
-/// parses avoids that crash and saves decoding time.
+/// Decoding stops as soon as the object parses. Without a grammar constraint the
+/// model can keep emitting prose after the closing brace; stopping early avoids
+/// wasted tokens and reduces the chance of a degenerate tail.
 fn json_object_complete(output: &[u8]) -> bool {
     let text = String::from_utf8_lossy(output);
     let Some(start) = text.find('{') else {

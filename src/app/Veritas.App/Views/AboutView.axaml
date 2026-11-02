@@ -28,7 +28,7 @@
             <StackPanel Spacing="10" Margin="0,12,0,0">
                 <TextBlock Classes="prose" Text="· Mengambil isi artikel dari tautan dan mengekstrak teks utama." />
                 <TextBlock Classes="prose" Text="· Mencari bukti di cek fakta, ensiklopedia, dan kanal berita tepercaya." />
-                <TextBlock Classes="prose" Text="· Menjalankan model GGUF lokal melalui llama.cpp tanpa backend." />
+                <TextBlock Classes="prose" Text="· Memakai model GGUF lokal melalui llama.cpp tanpa backend; hasil bergantung pada model yang Anda pilih." />
                 <TextBlock Classes="prose" Text="· Memecah klaim, menautkan nomor bukti, dan menampilkan catatan ketidakpastian." />
                 <TextBlock Classes="prose" Text="· Menyimpan hasil lengkap secara lokal agar dapat dibuka kembali." />
             </StackPanel>
@@ -36,7 +36,7 @@
             <Border Classes="rule" Margin="0,28,0,22" />
             <TextBlock Text="YANG TIDAK DIKLAIM" Classes="eyebrow" />
             <StackPanel Spacing="10" Margin="0,12,0,0">
-                <TextBlock Classes="prose" Text="· Akurasi tidak dijamin. Model 3B dapat salah, terutama pada konteks lokal yang tidak tercakup bukti." />
+                <TextBlock Classes="prose" Text="· Akurasi tidak dijamin. Model lokal dapat salah, terutama pada konteks yang tidak tercakup bukti." />
                 <TextBlock Classes="prose" Text="· Skor kebenaran dan skor tulisan AI adalah keluaran model yang belum dikalibrasi; bukan probabilitas tervalidasi." />
                 <TextBlock Classes="prose" Text="· Sinyal domain, buzzer, dan clickbait tidak pernah menghasilkan verdict." />
                 <TextBlock Classes="prose" Text="· Hasil bukan dasar hukum, keputusan editorial, atau bukti final." />

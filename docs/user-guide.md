@@ -2,18 +2,22 @@
 
 ## Install
 
-Download the package for your platform from the Releases page.
+No packaged installer is checked in yet. Run from source:
 
-- Windows: run `Veritas-Setup-1.0.0-alpha.exe`.
-- macOS: open the DMG and drag Veritas to Applications.
-- Linux: run the AppImage or install the `.deb`/`.rpm`.
+```
+dotnet run --project src/app/Veritas.App -f net10.0
+```
+
+For Windows packaging, `installer/windows/build.ps1` requires Inno Setup 6 and
+writes `artifacts/windows/installer/Veritas-Setup-1.0.0-alpha.exe`.
 
 ## First Run
 
-Veritas needs a local GGUF model. Open Pengaturan, select a model, and choose
-Unduh / lanjutkan model. The default Qwen 2.5 3B model is 1.93 GB; partial
-downloads resume and the finished file is verified with SHA-256. No account is
-required.
+Veritas needs a local GGUF model. Open Pengaturan and choose Unggah .gguf (or
+drag the file onto the model panel). The app reads the GGUF header, shows the
+architecture, quantization, context length, and chat-template status, copies the
+file atomically, then loads it once to confirm it works. A file that fails
+inspection or loading is rejected. There is no in-app downloader and no account.
 
 ## Analyze Text or a Link
 
@@ -28,7 +32,7 @@ required.
 ## Analyze a Poster
 
 1. Open Poster.
-2. Select Pilih gambar poster and choose a PNG, JPEG, BMP, WebP, or TIFF image.
+2. Select Pilih gambar poster, or drag an image onto the panel.
 3. Windows OCR extracts the text locally. Inspect and correct it in the text box.
 4. Select Analisis poster. The result appears in the Analisis tab.
 
@@ -46,26 +50,31 @@ produce incorrect text; always check it before analysis.
 
 **Keyakinan verdict** is the model's confidence that its verdict is correct.
 **Kebenaran klaim** is its estimate that the core claim is true. They answer
-different questions and can disagree.
+different questions and can disagree. Neither is calibrated against a labelled
+Indonesian benchmark; treat both as decision support.
 
 Warnings report problems such as a failed URL fetch, missing evidence, low
 confidence, or inconsistent model output. A warning is not a verdict.
 
 ## History
 
-Every analysis is stored locally in `%LOCALAPPDATA%\Veritas\history.sqlite`.
-Open Riwayat to review or clear it. History is never uploaded.
+Every analysis stores the full result locally in
+`%LOCALAPPDATA%\Veritas\history.sqlite`. Open Riwayat to search, reopen the
+complete verdict with its claims and evidence, or delete individual entries.
+History is never uploaded.
 
 ## Settings
 
-- Model: choose, download, or resume a GGUF model.
+- Model: upload, inspect, preload, or delete GGUF files. Drag and drop works.
 - Online evidence: fetch fact-check and encyclopedia citations.
+- Strict verification: run a second inference and demote the result if the two
+  verdicts disagree. This doubles latency and tests consistency, not truth.
 - Threshold: higher values make verdicts more conservative.
 - Language: Indonesian or English.
 - Theme: system, light, or dark.
-- Telemetry: off by default.
+- No telemetry is collected or sent.
 
-Model and evidence changes take effect after restarting the app.
+Model and settings changes take effect immediately.
 
 ## Privacy
 

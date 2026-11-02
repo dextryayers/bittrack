@@ -5,7 +5,8 @@
 //! The engine performs three things, in order: it resolves the input (article
 //! URL, pasted text, OCR poster text, reader comments), retrieves live
 //! fact-check and encyclopedia evidence, and asks a local GGUF model to produce
-//! a schema-constrained JSON verdict. There is no keyword-based fallback: when
+//! a JSON verdict that the engine parses and grounds. There is no keyword-based
+//! fallback: when
 //! the model is missing or fails the caller receives an error instead of a
 //! fabricated verdict.
 
@@ -441,8 +442,8 @@ fn analyze(
     let loaded = ensure_model_loaded(inner, report)?;
     if !loaded.has_chat_template {
         warnings.push(
-            "Model tidak menyertakan chat template; engine memakai fallback ChatML sehingga \
-             kepatuhan instruksi bisa menurun."
+            "Model tidak menyediakan chat template yang dapat dipakai; engine memakai fallback \
+             ChatML sehingga kepatuhan instruksi bisa menurun."
                 .into(),
         );
     }
@@ -512,6 +513,19 @@ fn analyze(
         .unwrap_or(DEFAULT_MAX_OUTPUT_TOKENS)
         .clamp(256, 3_000);
     let subject_budget = subject_char_budget(loaded.context_tokens, max_tokens, evidence.len());
+    if body.trim().chars().count() > subject_budget {
+        warnings.push(format!(
+            "Teks utama dipotong menjadi {subject_budget} karakter agar muat di konteks model \
+             ({} token). Bagian yang dipotong tidak dinilai.",
+            loaded.context_tokens
+        ));
+    }
+    if poster.chars().count() > subject_budget.min(MAX_POSTER_CHARS) {
+        warnings.push("Teks poster dipotong agar muat di konteks model.".into());
+    }
+    if comments.chars().count() > (subject_budget / 4).clamp(200, MAX_COMMENTS_CHARS) {
+        warnings.push("Sebagian komentar dipotong agar muat di konteks model.".into());
+    }
     let user = build_user_prompt(
         &title,
         &body,
@@ -898,7 +912,7 @@ fn run_inference(
     seed: Option<u32>,
     report: &dyn Fn(&str, f64, &str),
 ) -> Result<Inference, ErrorPayload> {
-    let mut backend_slot = inner.backend.lock().map_err(|_| ErrorPayload {
+    let backend_slot = inner.backend.lock().map_err(|_| ErrorPayload {
         code: "internal".into(),
         message: "backend lock poisoned".into(),
     })?;
@@ -1585,7 +1599,7 @@ mod tests {
     /// `cargo test -p veritas-engine real_model -- --ignored --nocapture`
     #[test]
     #[ignore = "requires the downloaded GGUF model"]
-    fn real_model_produces_schema_valid_verdict() {
+    fn real_model_produces_parseable_verdict() {
         let engine = veritas_init(std::ptr::null());
         assert!(!engine.is_null());
         let req = request(
