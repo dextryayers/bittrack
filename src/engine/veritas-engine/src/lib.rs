@@ -42,6 +42,13 @@ pub type ProgressCb = Option<unsafe extern "C" fn(*const c_char, *mut std::ffi::
 const PROMPT_VERSION: &str = "veritas-id-v3";
 /// Maximum characters of article text sent to the model.
 const MAX_SUBJECT_CHARS: usize = 9_000;
+
+/// Words that carry no factual content and only hurt search queries.
+const NOISE_WORDS: &[&str] = &[
+    "viral", "sebarkan", "hapus", "bukti", "asli", "breaking", "share", "forward",
+    "tolong", "mohon", "wajib", "penting", "mengandung", "menyembunyikan", "pemerintah",
+    "faktanya", "sebelum", "dihapus",
+];
 /// Maximum characters of OCR poster text sent to the model.
 const MAX_POSTER_CHARS: usize = 1_500;
 /// Maximum characters of reader comments sent to the model.
@@ -584,7 +591,9 @@ fn analyze(
         match serde_json::from_str::<ModelOutput>(&second.raw) {
             Ok(other) => {
                 let same_verdict = other.verdict.trim().eq_ignore_ascii_case(parsed.verdict.trim());
-                let truth_delta = (other.truth_score - parsed.truth_score).abs();
+                let other_truth = other.truth_score.unwrap_or(50);
+                let parsed_truth = parsed.truth_score.unwrap_or(50);
+                let truth_delta = (other_truth - parsed_truth).abs();
                 if !same_verdict {
                     strict_verdict_conflict = true;
                     warnings.push(
@@ -619,15 +628,27 @@ fn analyze(
     // Map model output into the public contract
     // ------------------------------------------------------------------
     report("map", 0.93, "menyusun hasil");
-    let mut confidence = clamp_ratio(parsed.confidence);
-    let truth_percentage = parsed.truth_score.clamp(0, 100) as u8;
+    let truth_provided = parsed.truth_score.is_some();
+    let mut confidence = clamp_ratio(parsed.confidence.unwrap_or(50));
+    let truth_percentage = parsed
+        .truth_score
+        .unwrap_or(50)
+        .clamp(0, 100) as u8;
     let mut verdict = Verdict::parse(&parsed.verdict).unwrap_or(Verdict::Unverifiable);
 
     if parsed.verdict.trim().is_empty() {
         warnings.push("Model tidak memilih verdict; ditandai tidak dapat diverifikasi.".into());
     }
-    if parsed.truth_score < 0 || parsed.truth_score > 100 {
-        warnings.push("Skor kebenaran model di luar 0..100 dan telah dipotong.".into());
+    if !truth_provided {
+        warnings.push("Model tidak memberi skor kebenaran; diisi 50 (netral).".into());
+    }
+    if parsed.confidence.is_none() {
+        warnings.push("Model tidak memberi keyakinan; diisi 50 (netral).".into());
+    }
+    if let Some(raw_truth) = parsed.truth_score {
+        if raw_truth < 0 || raw_truth > 100 {
+            warnings.push("Skor kebenaran model di luar 0..100 dan telah dipotong.".into());
+        }
     }
 
     if strict_verdict_conflict {
@@ -748,9 +769,12 @@ fn analyze(
 
 #[derive(Debug, Deserialize)]
 struct ModelOutput {
+    #[serde(default)]
     verdict: String,
-    truth_score: i32,
-    confidence: i32,
+    #[serde(default)]
+    truth_score: Option<i32>,
+    #[serde(default)]
+    confidence: Option<i32>,
     #[serde(default)]
     summary: String,
     #[serde(default)]
@@ -1149,12 +1173,34 @@ fn evidence_query(title: &str, body: &str, poster: &str) -> String {
     } else {
         title
     };
-    let words: Vec<&str> = base.split_whitespace().take(40).collect();
+    // Drop clickbait lead-ins and stopwords so the search query carries the
+    // factual core of the claim instead of "VIRAL! Sebarkan sebelum dihapus".
+    let words: Vec<&str> = base
+        .split_whitespace()
+        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-'))
+        .filter(|w| w.chars().count() >= 4)
+        .filter(|w| {
+            let lower = w.to_lowercase();
+            !fetch::STOPWORDS.contains(&lower.as_str())
+                && !NOISE_WORDS.contains(&lower.as_str())
+        })
+        .take(6)
+        .collect();
     let query = words.join(" ");
     if query.chars().count() >= 12 {
         query
     } else {
-        body.split_whitespace().take(40).collect::<Vec<_>>().join(" ")
+        body.split_whitespace()
+            .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-'))
+            .filter(|w| w.chars().count() >= 4)
+            .filter(|w| {
+                let lower = w.to_lowercase();
+                !fetch::STOPWORDS.contains(&lower.as_str())
+                    && !NOISE_WORDS.contains(&lower.as_str())
+            })
+            .take(6)
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 }
 
@@ -1172,7 +1218,7 @@ fn build_system_prompt(max_claims: u32) -> String {
          7. Pecah maksimal {max_claims} klaim terpenting. Isi evidence_ids dengan nomor bukti referensi yang relevan; array kosong bila tidak ada.\n\
          8. red_flags: pola manipulasi yang benar-benar terlihat, misalnya ajakan menyebarkan sebelum dihapus, sumber anonim, angka tanpa dasar, atau judul sensasional. Array kosong bila tidak ada.\n\
          9. ai_score = probabilitas 0-100 bahwa teks masukan ditulis oleh AI (bukan manusia). Perhatikan pola repetitif, kosakata generik, struktur terlalu rapi, dan kurangnya detail personal/spesifik. Skor tinggi = kemungkinan besar ditulis AI.\n\
-         10. Balas HANYA JSON sesuai skema, tanpa teks lain."
+         10. Balas HANYA JSON dengan field wajib: verdict, truth_score, confidence, summary, claims (array objek: text, type, importance, verdict, confidence, reasoning, evidence_ids), red_flags (array string), ai_score (0-100). Jangan tambahkan field lain dan jangan tulis teks di luar JSON."
     )
 }
 
@@ -1591,25 +1637,12 @@ mod tests {
     fn query_prefers_title() {
         assert_eq!(
             evidence_query("Vaksin COVID-19 microchip 5G", "isi lain", ""),
-            "Vaksin COVID-19 microchip 5G"
+            "Vaksin COVID-19 microchip"
         );
     }
 
     /// End-to-end check against the real 1.9 GB GGUF model. Run with:
     /// `cargo test -p veritas-engine real_model -- --ignored --nocapture`
-    #[test]
-    #[ignore = "network debug"]
-    fn debug_bing() {
-        match fetch::bing_search("Vaksin COVID-19 microchip 5G cek fakta", 10) {
-            Ok(hits) => {
-                println!("BING HITS: {}", hits.len());
-                for h in hits {
-                    println!("  [{}] {} | {} | {}", h.kind, h.source, h.score, h.url);
-                }
-            }
-            Err(e) => println!("BING ERROR: {e}"),
-        }
-    }
 
     /// End-to-end check against the real 1.9 GB GGUF model. Run with:
     /// `cargo test -p veritas-engine real_model -- --ignored --nocapture`

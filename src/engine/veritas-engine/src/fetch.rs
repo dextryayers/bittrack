@@ -340,12 +340,14 @@ fn truncate_chars(text: &str, max: usize) -> String {
     out
 }
 
-const STOPWORDS: &[&str] = &[
+pub(crate) const STOPWORDS: &[&str] = &[
     "yang", "dan", "untuk", "dengan", "dari", "ini", "itu", "akan", "pada", "juga", "tidak",
     "dalam", "adalah", "sebagai", "telah", "sudah", "bisa", "dapat", "oleh", "atau", "karena",
     "para", "kata", "lebih", "sangat", "agar", "saat", "setelah", "sebelum", "kepada", "tentang",
     "the", "and", "for", "with", "from", "this", "that", "have", "has", "are", "was", "were",
-    "will", "would", "can", "could", "not",
+    "will", "would", "can", "could", "not", "mengandung", "menyembunyikan", "pemerintah",
+    "faktanya", "sebelum", "dihapus", "asli", "bukti", "sebarkan", "tolong", "penting",
+    "wajib", "mohon", "virall", "viral",
 ];
 
 fn tokens(text: &str) -> BTreeSet<String> {
@@ -630,7 +632,7 @@ pub fn search_evidence(query: &str, max: usize) -> Result<Vec<SearchHit>, FetchE
         if let Ok(page) = fetch_page(&hit.url) {
             let text = page.text.trim();
             if !text.is_empty() {
-                hit.snippet = truncate_chars(text, MAX_EVIDENCE_CHARS);
+                hit.snippet = truncate_chars(text, super::MAX_EVIDENCE_CHARS);
                 enriched += 1;
             }
         }
@@ -646,30 +648,6 @@ pub fn search_evidence(query: &str, max: usize) -> Result<Vec<SearchHit>, FetchE
 mod tests {
     use super::*;
 
-    #[test]
-    #[ignore = "network debug"]
-    fn debug_bing_raw() {
-        let url = "https://www.bing.com/search?q=Vaksin+COVID-19+microchip+5G+cek+fakta&count=10&mkt=id-ID&setlang=id&cc=ID";
-        let html = client().unwrap().get(url).send().unwrap().text().unwrap();
-        println!("HTML LEN: {}", html.len());
-        let doc = Html::parse_document(&html);
-        let item_sel = select("li.b_algo");
-        let link_sel = select("h2 a[href]");
-        println!("LI.B_ALGO: {}", doc.select(&item_sel).count());
-        for item in doc.select(&item_sel).take(10) {
-            if let Some(link) = item.select(&link_sel).next() {
-                if let Some(href) = link.value().attr("href") {
-                    let target = decode_bing_target(href).or_else(|| {
-                        href.starts_with("http").then(|| href.to_string()).filter(|h| Url::parse(h).is_ok())
-                    });
-                    let host = target.as_deref().and_then(|t| Url::parse(t).ok()).and_then(|u| u.host_str().map(str::to_string)).unwrap_or_default();
-                    println!("  HREF_HOST: {} -> {}", host, target.unwrap_or_default());
-                }
-            }
-        }
-        // print first 500 chars
-        println!("SNIPPET: {}", &html[..html.len().min(500)]);
-    }
 
     #[test]
     fn rejects_private_urls() {
