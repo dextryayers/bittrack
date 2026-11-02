@@ -94,6 +94,9 @@ pub struct AnalyzeOptions {
     /// Run a second inference with a different seed and demote the verdict when
     /// the two passes disagree. This doubles latency and is opt-in.
     pub strict_verification: bool,
+    /// Run three independent inferences and take the majority verdict. This
+    /// triples latency and is opt-in. It tests consistency, not truth.
+    pub deep_verification: bool,
 }
 
 impl Default for AnalyzeOptions {
@@ -104,6 +107,7 @@ impl Default for AnalyzeOptions {
             max_claims: 8,
             online_evidence: true,
             strict_verification: false,
+            deep_verification: false,
         }
     }
 }

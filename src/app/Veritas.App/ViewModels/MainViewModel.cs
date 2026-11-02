@@ -344,7 +344,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IncludeHeuristics: true,
         MaxClaims: 8,
         OnlineEvidence: Settings.OnlineEvidence,
-        StrictVerification: Settings.StrictVerification);
+        StrictVerification: Settings.StrictVerification,
+        DeepVerification: Settings.DeepVerification);
 
     private async Task RunAnalysisAsync(AnalyzeRequest request, string historyInput)
     {
@@ -599,6 +600,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private void OpenAiDetect()
+    {
+        SelectedPageIndex = 6;
+    }
+
+    [RelayCommand]
     private void OpenAnalyze()
     {
         SelectedPageIndex = 1;
@@ -626,6 +633,146 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private async Task ExportReportAsync()
+    {
+        if (_lastResponse is null)
+        {
+            Status = "Belum ada hasil untuk diekspor.";
+            return;
+        }
+        if (Application.Current?.ApplicationLifetime
+            is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } window })
+        {
+            return;
+        }
+
+        var file = await window.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Simpan laporan Veritas",
+            SuggestedFileName = $"veritas-{DateTime.Now:yyyyMMdd-HHmmss}.md",
+            FileTypeChoices = new[]
+            {
+                new FilePickerFileType("Markdown") { Patterns = new[] { "*.md" } },
+                new FilePickerFileType("Teks") { Patterns = new[] { "*.txt" } },
+            },
+            DefaultExtension = "md",
+        });
+        if (file is null)
+        {
+            return;
+        }
+
+        string? path = file.TryGetLocalPath();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            Status = "Lokasi penyimpanan tidak dapat diakses.";
+            return;
+        }
+
+        try
+        {
+            await File.WriteAllTextAsync(path, BuildReportMarkdown(_lastResponse));
+            Status = $"Laporan disimpan: {path}";
+            try
+            {
+                Process.Start(new ProcessStartInfo { FileName = Path.GetDirectoryName(path)!, UseShellExecute = true });
+            }
+            catch
+            {
+                // Best effort: the file is still saved.
+            }
+        }
+        catch (Exception ex)
+        {
+            Status = $"Gagal menyimpan laporan: {ex.Message}";
+        }
+    }
+
+    private static string BuildReportMarkdown(AnalyzeResponse resp)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("# Veritas — Laporan Analisis");
+        sb.AppendLine();
+        sb.AppendLine($"- **Verdict model:** {VerdictLabel(resp.Verdict)}");
+        sb.AppendLine($"- **Keyakinan model:** {resp.Confidence * 100:0}%");
+        sb.AppendLine($"- **Perkiraan kebenaran (belum terkalibrasi):** {resp.TruthPercentage}%");
+        sb.AppendLine($"- **Perkiraan tulisan AI (eksperimental):** {resp.AiPercentage}%");
+        sb.AppendLine($"- **Model:** {resp.Audit.Model}");
+        sb.AppendLine($"- **Prompt:** {resp.Audit.PromptVersion}");
+        sb.AppendLine($"- **Input hash:** {resp.Audit.InputHash}");
+        sb.AppendLine();
+        sb.AppendLine("## Ringkasan");
+        sb.AppendLine();
+        sb.AppendLine(resp.Summary);
+        sb.AppendLine();
+        if (resp.Claims.Length > 0)
+        {
+            sb.AppendLine("## Klaim");
+            sb.AppendLine();
+            foreach (var claim in resp.Claims)
+            {
+                sb.AppendLine($"### {claim.Id}. {claim.Text}");
+                sb.AppendLine($"- Verdict: {claim.VerdictLabel}");
+                sb.AppendLine($"- Jenis: {claim.TypeLabel}");
+                sb.AppendLine($"- Keyakinan: {claim.ConfidenceDisplay}");
+                sb.AppendLine($"- Rujukan bukti: {claim.EvidenceIdsDisplay}");
+                if (claim.HasReasoning)
+                {
+                    sb.AppendLine($"- Alasan: {claim.Reasoning}");
+                }
+                sb.AppendLine();
+            }
+        }
+        if (resp.Evidence.Length > 0)
+        {
+            sb.AppendLine("## Bukti Referensi");
+            sb.AppendLine();
+            foreach (var evidence in resp.Evidence)
+            {
+                sb.AppendLine($"### [{evidence.Id}] {evidence.Source}");
+                sb.AppendLine($"- Jenis: {evidence.KindLabel}");
+                sb.AppendLine($"- Tanggal: {evidence.DateDisplay}");
+                sb.AppendLine($"- URL: {evidence.Url}");
+                sb.AppendLine();
+                sb.AppendLine(evidence.Text);
+                sb.AppendLine();
+            }
+        }
+        if (resp.Heuristics.Signals.Length > 0)
+        {
+            sb.AppendLine("## Sinyal Heuristik (konteks, bukan verdict)");
+            sb.AppendLine();
+            foreach (var signal in resp.Heuristics.Signals)
+            {
+                sb.AppendLine($"- {signal}");
+            }
+            sb.AppendLine();
+        }
+        if (resp.Warnings.Length > 0)
+        {
+            sb.AppendLine("## Catatan Engine");
+            sb.AppendLine();
+            foreach (var warning in resp.Warnings)
+            {
+                sb.AppendLine($"- {warning}");
+            }
+            sb.AppendLine();
+        }
+        if (resp.RedFlags.Length > 0)
+        {
+            sb.AppendLine("## Tanda Merah");
+            sb.AppendLine();
+            foreach (var flag in resp.RedFlags)
+            {
+                sb.AppendLine($"- {flag}");
+            }
+            sb.AppendLine();
+        }
+        sb.AppendLine("---");
+        sb.AppendLine("Dibuat oleh Veritas. Hasil adalah bahan pemeriksaan, bukan putusan final.");
+        return sb.ToString();
+    }
+    [RelayCommand]
     private async Task CopyResultAsync()
     {
         if (_lastResponse is null)
@@ -639,7 +786,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private static string BuildResultText(AnalyzeResponse resp)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("VERITAS — HASIL ANALISIS");
+        sb.AppendLine("VERITAS - HASIL ANALISIS");
         sb.AppendLine(VerdictLabel(resp.Verdict).ToUpperInvariant());
         sb.AppendLine($"Keyakinan model: {resp.Confidence * 100:0}%");
         sb.AppendLine($"Perkiraan kebenaran (belum terkalibrasi): {resp.TruthPercentage}%");

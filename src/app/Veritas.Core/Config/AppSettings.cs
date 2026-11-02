@@ -12,6 +12,7 @@ public sealed class AppSettings : INotifyPropertyChanged
     private string _theme = "system";
     private bool _onlineEvidence = true;
     private bool _strictVerification;
+    private bool _deepVerification;
 
     public string ModelId
     {
@@ -47,6 +48,12 @@ public sealed class AppSettings : INotifyPropertyChanged
     {
         get => _strictVerification;
         set => Set(ref _strictVerification, value);
+    }
+
+    public bool DeepVerification
+    {
+        get => _deepVerification;
+        set => Set(ref _deepVerification, value);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

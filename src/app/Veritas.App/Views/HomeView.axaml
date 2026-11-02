@@ -20,7 +20,8 @@
 
             <Grid ColumnDefinitions="1.55*,1*" Margin="0,30,0,0">
                 <StackPanel Spacing="20" Margin="0,0,54,0">
-                    <TextBlock Classes="display" Text="Periksa klaim sebelum ikut menyebarkan." />
+                    <TextBlock Classes="display" Text="Periksa klaim sebelum ikut menyebarkan."
+                               TextWrapping="Wrap" MaxWidth="560" />
                     <TextBlock Classes="lede" MaxWidth="600"
                                Text="Veritas membaca teks, tautan, poster, atau komentar, mencari bukti dari sumber tepercaya, lalu meminta model bahasa lokal menimbang klaim inti. Model berjalan di perangkat ini." />
                     <StackPanel Orientation="Horizontal" Spacing="10">

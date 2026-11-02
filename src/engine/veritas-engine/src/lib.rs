@@ -718,6 +718,93 @@ fn analyze(
         warnings.push("Verifikasi ketat diaktifkan.".into());
     }
 
+    // ------------------------------------------------------------------
+    // Optional deep verification: three independent inferences, majority vote.
+    // ------------------------------------------------------------------
+    let mut deep_majority_count = 0usize;
+    if opts.deep_verification {
+        report("verify", 0.89, "verifikasi mendalam: 2 inferensi tambahan");
+        let mut verdicts = vec![Verdict::parse(&parsed.verdict).unwrap_or(Verdict::Unverifiable)];
+        let mut confidences = vec![clamp_ratio(parsed.confidence.unwrap_or(50))];
+        let mut truths = vec![parsed.truth_score.unwrap_or(50)];
+
+        for seed in [Some(0x5EED_u32), Some(0xA11CE_u32)] {
+            check_cancel(inner)?;
+            let extra = run_inference(inner, &loaded, &system, &user, max_tokens, seed, report)?;
+            match serde_json::from_str::<ModelOutput>(&extra.raw) {
+                Ok(other) => {
+                    verdicts.push(Verdict::parse(&other.verdict).unwrap_or(Verdict::Unverifiable));
+                    confidences.push(clamp_ratio(other.confidence.unwrap_or(50)));
+                    truths.push(other.truth_score.unwrap_or(50));
+                }
+                Err(e) => {
+                    warnings.push(format!(
+                        "Verifikasi mendalam: salah satu inferensi tidak terbaca ({e}); keyakinan dibatasi."
+                    ));
+                }
+            }
+        }
+
+        let mut tally: Vec<(Verdict, usize)> = Vec::new();
+        for verdict in &verdicts {
+            if let Some(entry) = tally.iter_mut().find(|(value, _)| value == verdict) {
+                entry.1 += 1;
+            } else {
+                tally.push((*verdict, 1));
+            }
+        }
+        let (majority, majority_count) = tally
+            .into_iter()
+            .max_by_key(|(_, count)| *count)
+            .unwrap_or((Verdict::Unverifiable, 0));
+        deep_majority_count = majority_count;
+
+        if majority_count < 2 || verdicts.len() < 3 {
+            verdict = Verdict::Unverifiable;
+            confidence = confidence.min(0.40);
+            warnings.push(
+                "Verifikasi mendalam: tidak ada mayoritas verdict; hasil diturunkan ke tidak dapat \
+                 diverifikasi."
+                    .into(),
+            );
+        } else {
+            verdict = majority;
+            let mut confidence_sum = 0.0;
+            let mut truth_sum = 0i32;
+            let mut agreeing = 0usize;
+            for (index, value) in verdicts.iter().enumerate() {
+                if *value == majority {
+                    confidence_sum += confidences[index];
+                    truth_sum += truths[index];
+                    agreeing += 1;
+                }
+            }
+            if agreeing > 0 {
+                confidence = confidence_sum / agreeing as f64;
+                truth_percentage = (truth_sum as f64 / agreeing as f64)
+                    .round()
+                    .clamp(0.0, 100.0) as u8;
+            }
+            if majority_count == 3 {
+                warnings.push(
+                    "Verifikasi mendalam: 3 dari 3 inferensi sepakat. Ini konsistensi keluaran, \
+                     bukan bukti bahwa verdict benar."
+                        .into(),
+                );
+            } else {
+                warnings.push(
+                    "Verifikasi mendalam: 2 dari 3 inferensi sepakat. Hasil lebih konsisten, \
+                     tetapi bukan bukti kebenaran."
+                        .into(),
+                );
+            }
+        }
+
+        if deep_majority_count >= 2 && warnings.iter().any(|w| w.contains("tidak terbaca")) {
+            confidence = confidence.min(0.55);
+        }
+    }
+
     let heuristics = if opts.include_heuristics {
         heuristics::build_heuristics(&format!("{}\n{}\n{}\n{}", title, body, poster, comments))
     } else {

@@ -23,6 +23,7 @@
         <KeyBinding Gesture="Ctrl+4" Command="{Binding NavigateCommand}" CommandParameter="3" />
         <KeyBinding Gesture="Ctrl+5" Command="{Binding NavigateCommand}" CommandParameter="4" />
         <KeyBinding Gesture="Ctrl+6" Command="{Binding NavigateCommand}" CommandParameter="5" />
+        <KeyBinding Gesture="Ctrl+7" Command="{Binding NavigateCommand}" CommandParameter="6" />
         <KeyBinding Gesture="Ctrl+Enter" Command="{Binding AnalyzeCommand}" />
         <KeyBinding Gesture="Ctrl+O" Command="{Binding UploadModelCommand}" />
     </Window.KeyBindings>
@@ -83,6 +84,12 @@
                             <TextBlock Grid.Column="1" Text="Tentang" FontSize="13" VerticalAlignment="Center" />
                         </Grid>
                     </ListBoxItem>
+                    <ListBoxItem Classes="nav" AutomationProperties.Name="Deteksi AI">
+                        <Grid ColumnDefinitions="26,*">
+                            <TextBlock Text="07" Classes="meta" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="Deteksi AI" FontSize="13" VerticalAlignment="Center" />
+                        </Grid>
+                    </ListBoxItem>
                 </ListBox>
 
                 <StackPanel Grid.Row="2" Spacing="10">
@@ -117,6 +124,7 @@
                 <views:HistoryView />
                 <views:SettingsView />
                 <views:AboutView />
+                <views:AiDetectView />
             </Carousel>
 
             <Border Grid.Row="1" BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="0,1,0,0"

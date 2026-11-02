@@ -44,6 +44,11 @@
                                       IsChecked="{Binding Settings.StrictVerification, Mode=TwoWay}" />
                             <TextBlock Classes="faint" TextWrapping="Wrap"
                                        Text="Verifikasi ketat menguji konsistensi keluaran, bukan menjamin verdict benar. Latensi menjadi sekitar dua kali." />
+
+                            <CheckBox Content="Verifikasi mendalam (tiga inferensi)"
+                                      IsChecked="{Binding Settings.DeepVerification, Mode=TwoWay}" />
+                            <TextBlock Classes="faint" TextWrapping="Wrap"
+                                       Text="Menjalankan tiga inferensi independen dan mengambil mayoritas verdict. Latensi menjadi sekitar tiga kali; menguji konsistensi, bukan kebenaran." />
                         </StackPanel>
                     </Grid>
 
@@ -279,7 +284,10 @@
                 <Border Classes="rule" Margin="0,28,0,14" />
                 <Grid ColumnDefinitions="*,Auto">
                     <TextBlock Text="{Binding ResultAuditLine}" Classes="meta" TextWrapping="Wrap" Margin="0,0,16,0" />
-                    <Button Grid.Column="1" Content="Salin hasil" Classes="quiet" Command="{Binding CopyResultCommand}" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                        <Button Content="Ekspor laporan" Classes="quiet" Command="{Binding ExportReportCommand}" />
+                        <Button Content="Salin hasil" Classes="quiet" Command="{Binding CopyResultCommand}" />
+                    </StackPanel>
                 </Grid>
             </StackPanel>
         </StackPanel>

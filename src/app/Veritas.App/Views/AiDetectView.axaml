@@ -1,0 +1,69 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Veritas.App.ViewModels"
+             x:Class="Veritas.App.Views.AiDetectView"
+             x:DataType="vm:MainViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="46,38,46,46" MaxWidth="900" HorizontalAlignment="Center">
+            <TextBlock Text="DETEKSI AI" Classes="eyebrow" />
+            <TextBlock Text="Estimasi tulisan AI vs manusia." Classes="h1" Margin="0,8,0,6" />
+            <TextBlock Classes="lede" MaxWidth="680"
+                       Text="Skor ini adalah keluaran model yang belum terkalibrasi. Ia menilai pola gaya tulisan, bukan bukti penulisan mesin. Gunakan sebagai petunjuk, bukan putusan." />
+
+            <Border Classes="panel" Margin="0,26,0,0" IsVisible="{Binding HasResult}">
+                <StackPanel Spacing="18">
+                    <Grid ColumnDefinitions="*,220">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="PERKIRAAN TULISAN AI" Classes="eyebrow" />
+                            <TextBlock Text="{Binding ResultAiPercentage, StringFormat='{}{0}%'}"
+                                       FontSize="48" FontWeight="SemiBold" />
+                            <TextBlock Classes="faint" TextWrapping="Wrap"
+                                       Text="0% = kemungkinan besar manusia, 100% = kemungkinan besar AI." />
+                        </StackPanel>
+                        <Border Grid.Column="1" BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1,0,0,0"
+                                Padding="22,0,0,0">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="VERDICT UTAMA" Classes="eyebrow" />
+                                <TextBlock Text="{Binding ResultVerdictLabel}" FontSize="22" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding ResultConfidenceDisplay}" Classes="mono" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Border Classes="soft" IsVisible="{Binding HasSignals}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="SINYAL YANG TERDETEKSI" Classes="eyebrow" />
+                            <ItemsControl ItemsSource="{Binding ResultSignals}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <Border Classes="tag" Margin="0,0,6,6">
+                                            <TextBlock Text="{Binding}" Classes="meta" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Classes="prose muted" TextWrapping="Wrap"
+                               Text="Model menilai pola repetitif, kosakata generik, struktur terlalu rapi, dan kurangnya detail personal. Skor tinggi bukan bukti penulisan mesin." />
+                </StackPanel>
+            </Border>
+
+            <Border Classes="soft" IsVisible="{Binding !HasResult}" Margin="0,26,0,0">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Belum ada hasil." Classes="h3" />
+                    <TextBlock Classes="prose muted"
+                               Text="Jalankan analisis di tab Analisis terlebih dahulu. Skor AI akan muncul di sini." />
+                    <Button Content="Buka analisis" Classes="primary" HorizontalAlignment="Left"
+                            Command="{Binding OpenAnalyzeCommand}" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

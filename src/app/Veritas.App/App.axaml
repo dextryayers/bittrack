@@ -68,7 +68,7 @@
 
         <Style Selector="Window">
             <Setter Property="Background" Value="{DynamicResource AppBackgroundBrush}" />
-            <Setter Property="FontFamily" Value="avares://Avalonia.Fonts.Inter/Assets#Inter" />
+            <Setter Property="FontFamily" Value="avares://Avalonia.Fonts.Inter/Assets#Inter, Segoe UI, system-ui, sans-serif" />
             <Setter Property="FontSize" Value="14" />
         </Style>
 
@@ -76,18 +76,21 @@
             <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
         </Style>
         <Style Selector="TextBlock.display">
-            <Setter Property="FontSize" Value="40" />
-            <Setter Property="LineHeight" Value="44" />
+            <Setter Property="FontSize" Value="44" />
+            <Setter Property="LineHeight" Value="48" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="LetterSpacing" Value="-0.5" />
+            <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
         <Style Selector="TextBlock.h1">
-            <Setter Property="FontSize" Value="27" />
-            <Setter Property="LineHeight" Value="33" />
+            <Setter Property="FontSize" Value="29" />
+            <Setter Property="LineHeight" Value="35" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="LetterSpacing" Value="-0.3" />
         </Style>
         <Style Selector="TextBlock.h2">
-            <Setter Property="FontSize" Value="18" />
-            <Setter Property="LineHeight" Value="24" />
+            <Setter Property="FontSize" Value="19" />
+            <Setter Property="LineHeight" Value="25" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
         <Style Selector="TextBlock.h3">
@@ -98,6 +101,7 @@
         <Style Selector="TextBlock.eyebrow">
             <Setter Property="FontSize" Value="11" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="LetterSpacing" Value="1.4" />
             <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
         </Style>
         <Style Selector="TextBlock.lede">

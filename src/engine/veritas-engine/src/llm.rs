@@ -129,7 +129,19 @@ impl Llm {
         }
         let params = LlamaModelParams::default().with_n_gpu_layers(0);
         let model = LlamaModel::load_from_file(backend, path, &params)
-            .map_err(|e| LlmError::Load(e.to_string()))?;
+            .map_err(|e| {
+                let architecture = crate::inspect::inspect_file(path).architecture;
+                let hint = if architecture.is_empty() {
+                    String::new()
+                } else {
+                    format!(" Arsitektur terdeteksi: {architecture}.")
+                };
+                LlmError::Load(format!(
+                    "model load failed: {e}.{hint} Arsitektur ini mungkin tidak didukung oleh \
+                     mesin inferensi bawaan. Gunakan model dengan arsitektur umum (Llama, \
+                     Qwen, Mistral, Gemma, Phi, dan turunannya)."
+                ))
+            })?;
         // Validate the template at load time. Some GGUFs embed a Jinja template
         // that the current llama.cpp build cannot render; failing later, after
         // the user has already selected the model, would look like a random

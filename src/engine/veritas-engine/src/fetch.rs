@@ -623,7 +623,7 @@ pub fn search_evidence(query: &str, max: usize) -> Result<Vec<SearchHit>, FetchE
     // non-fatal: the snippet stays as the evidence.
     let mut enriched = 0;
     for hit in hits.iter_mut() {
-        if enriched >= 2 {
+        if enriched >= 3 {
             break;
         }
         if hit.kind != "fact_check" && hit.kind != "encyclopedia" {

@@ -123,6 +123,11 @@
                               IsChecked="{Binding Settings.StrictVerification, Mode=TwoWay}" />
                     <TextBlock Classes="faint" TextWrapping="Wrap" Margin="24,-8,0,0"
                                Text="Jika kedua inferensi berbeda verdict, hasil diturunkan. Ini menguji konsistensi, bukan kebenaran; waktu proses menjadi dua kali lipat." />
+
+                    <CheckBox Content="Verifikasi mendalam: jalankan tiga inferensi"
+                              IsChecked="{Binding Settings.DeepVerification, Mode=TwoWay}" />
+                    <TextBlock Classes="faint" TextWrapping="Wrap" Margin="24,-8,0,0"
+                               Text="Mengambil mayoritas dari tiga inferensi. Latensi menjadi tiga kali lipat; menguji konsistensi, bukan kebenaran." />
                 </StackPanel>
             </Border>
 
