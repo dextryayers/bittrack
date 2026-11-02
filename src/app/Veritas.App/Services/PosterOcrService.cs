@@ -1,8 +1,8 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 
 #if WINDOWS
-using System.Linq;
 using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
 using Windows.Storage;
@@ -32,20 +32,66 @@ public static class PosterOcrService
         var file = await StorageFile.GetFileFromPathAsync(path);
         using var stream = await file.OpenAsync(FileAccessMode.Read);
         var decoder = await BitmapDecoder.CreateAsync(stream);
-        using var bitmap = await decoder.GetSoftwareBitmapAsync();
 
-        var indonesian = OcrEngine.AvailableRecognizerLanguages
-            .FirstOrDefault(l => l.LanguageTag.StartsWith("id", StringComparison.OrdinalIgnoreCase));
-        var engine = (indonesian is not null ? OcrEngine.TryCreateFromLanguage(indonesian) : null)
-                     ?? OcrEngine.TryCreateFromUserProfileLanguages();
-        if (engine is null)
+        // Small posters are the common case for screenshots and chat forwards.
+        // Upscaling before OCR materially improves character recognition on
+        // low-resolution images without changing the source file.
+        var transform = new BitmapTransform();
+        if (decoder.PixelWidth > 0 && decoder.PixelWidth < 1500)
         {
-            throw new InvalidOperationException(
-                "Windows OCR tidak tersedia. Pasang komponen OCR melalui Settings > Apps > Optional features.");
+            transform.ScaledWidth = decoder.PixelWidth * 2;
+            transform.ScaledHeight = decoder.PixelHeight * 2;
+            transform.InterpolationMode = BitmapInterpolationMode.Fant;
         }
 
-        var result = await engine.RecognizeAsync(bitmap);
-        return string.Join('\n', result.Lines.Select(line => line.Text)).Trim();
+        using var bitmap = await decoder.GetSoftwareBitmapAsync(
+            BitmapPixelFormat.Bgra8,
+            BitmapAlphaMode.Premultiplied,
+            transform,
+            ExifOrientationMode.RespectExifOrientation,
+            ColorManagementMode.DoNotColorManage);
+
+        // Try every recognizer that can plausibly read the poster (Indonesian
+        // first, then English) and keep the richest result. A single recognizer
+        // often drops text that another one catches.
+        var candidates = OcrEngine.AvailableRecognizerLanguages
+            .Where(language => language.LanguageTag.StartsWith("id", StringComparison.OrdinalIgnoreCase)
+                            || language.LanguageTag.StartsWith("en", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        string best = string.Empty;
+        foreach (var language in candidates)
+        {
+            var engine = OcrEngine.TryCreateFromLanguage(language);
+            if (engine is null)
+            {
+                continue;
+            }
+            var result = await engine.RecognizeAsync(bitmap);
+            var text = string.Join('\n', result.Lines.Select(line => line.Text)).Trim();
+            if (text.Length > best.Length)
+            {
+                best = text;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(best))
+        {
+            var fallback = OcrEngine.TryCreateFromUserProfileLanguages();
+            if (fallback is not null)
+            {
+                var result = await fallback.RecognizeAsync(bitmap);
+                best = string.Join('\n', result.Lines.Select(line => line.Text)).Trim();
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(best))
+        {
+            throw new InvalidOperationException(
+                "Windows OCR tidak menemukan teks. Coba gambar yang lebih jelas atau tempel teks manual.");
+        }
+
+        return best;
     }
 #endif
 }

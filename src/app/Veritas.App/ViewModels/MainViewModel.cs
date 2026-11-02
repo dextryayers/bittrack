@@ -166,7 +166,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<Claim> ResultClaims { get; } = new();    public ObservableCollection<Evidence> ResultEvidence { get; } = new();
     public ObservableCollection<string> ResultSignals { get; } = new();
     public ObservableCollection<string> ResultWarnings { get; } = new();
+    [ObservableProperty]
+    private bool _hasActivity;
+
     public ObservableCollection<string> ResultRedFlags { get; } = new();
+    public ObservableCollection<string> ActivityLog { get; } = new();
     public ObservableCollection<HistoryEntry> History { get; } = new();
     public ObservableCollection<HistoryEntry> RecentHistory { get; } = new();
     public ObservableCollection<ModelInfo> Models { get; } = new();
@@ -319,6 +323,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ResultOpacity = 0;
         AnalysisProgress = 0;
         ClearResultCollections();
+        ActivityLog.Clear();
+        HasActivity = false;
         Status = "Menganalisis...";
 
         try
@@ -362,6 +368,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         void Update()
         {
             AnalysisProgress = ev.Percent * 100.0;
+            string line = $"{DateTime.Now:HH:mm:ss}  {ev.Stage.ToUpperInvariant()}  {ev.Message}";
+            if (!ActivityLog.Contains(line))
+            {
+                ActivityLog.Add(line);
+                HasActivity = true;
+            }
             Status = ev.Stage switch
             {
                 "fetch" => "Mengambil isi tautan...",

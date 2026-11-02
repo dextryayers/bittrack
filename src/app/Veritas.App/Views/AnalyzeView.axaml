@@ -63,6 +63,25 @@
                 </StackPanel>
             </Border>
 
+            <Border Classes="soft" IsVisible="{Binding HasActivity}" Margin="0,18,0,0">
+                <StackPanel Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="PROSES REAL-TIME" Classes="eyebrow" />
+                        <TextBlock Grid.Column="1" Text="SCRAPE · CARI BUKTI · INFERENSI" Classes="meta" />
+                    </Grid>
+                    <ScrollViewer MaxHeight="170" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding ActivityLog}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{Binding}" Classes="mono" FontSize="11"
+                                               TextWrapping="Wrap" Margin="0,1" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+            </Border>
+
             <Border Classes="soft" IsVisible="{Binding !HasResult}" Margin="0,24,0,0">
                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="18">
                     <TextBlock Text="HASIL" Classes="eyebrow" VerticalAlignment="Top" Margin="0,3,0,0" />
