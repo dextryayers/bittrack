@@ -76,12 +76,18 @@ pub enum FetchError {
 }
 
 fn client() -> Result<Client, FetchError> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::ACCEPT_LANGUAGE,
+        reqwest::header::HeaderValue::from_static("id-ID,id;q=0.9,en;q=0.8"),
+    );
     Client::builder()
         .user_agent(concat!(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ",
             "(KHTML, like Gecko) Chrome/126.0 Safari/537.36 Veritas/",
             env!("CARGO_PKG_VERSION")
         ))
+        .default_headers(headers)
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REQUEST_TIMEOUT)
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
@@ -455,7 +461,7 @@ fn decode_bing_target(href: &str) -> Option<String> {
 pub fn bing_search(query: &str, limit: usize) -> Result<Vec<SearchHit>, FetchError> {
     let encoded = urlencoding::encode(query);
     let url = format!(
-        "https://www.bing.com/search?q={encoded}&count={}&setlang=id&cc=ID",
+        "https://www.bing.com/search?q={encoded}&count={}&mkt=id-ID&setlang=id&cc=ID",
         limit.clamp(1, 20)
     );
     let html = client()?
@@ -608,6 +614,28 @@ pub fn search_evidence(query: &str, max: usize) -> Result<Vec<SearchHit>, FetchE
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     hits.truncate(max);
+
+    // Enrich the most relevant fact-check and encyclopedia hits with their full
+    // article text. Search snippets are often too short to ground a verdict,
+    // and a truncated snippet can make the model guess. Fetch failures are
+    // non-fatal: the snippet stays as the evidence.
+    let mut enriched = 0;
+    for hit in hits.iter_mut() {
+        if enriched >= 2 {
+            break;
+        }
+        if hit.kind != "fact_check" && hit.kind != "encyclopedia" {
+            continue;
+        }
+        if let Ok(page) = fetch_page(&hit.url) {
+            let text = page.text.trim();
+            if !text.is_empty() {
+                hit.snippet = truncate_chars(text, MAX_EVIDENCE_CHARS);
+                enriched += 1;
+            }
+        }
+    }
+
     if hits.is_empty() && !errors.is_empty() {
         return Err(FetchError::Http(errors.join("; ")));
     }
@@ -617,6 +645,31 @@ pub fn search_evidence(query: &str, max: usize) -> Result<Vec<SearchHit>, FetchE
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "network debug"]
+    fn debug_bing_raw() {
+        let url = "https://www.bing.com/search?q=Vaksin+COVID-19+microchip+5G+cek+fakta&count=10&mkt=id-ID&setlang=id&cc=ID";
+        let html = client().unwrap().get(url).send().unwrap().text().unwrap();
+        println!("HTML LEN: {}", html.len());
+        let doc = Html::parse_document(&html);
+        let item_sel = select("li.b_algo");
+        let link_sel = select("h2 a[href]");
+        println!("LI.B_ALGO: {}", doc.select(&item_sel).count());
+        for item in doc.select(&item_sel).take(10) {
+            if let Some(link) = item.select(&link_sel).next() {
+                if let Some(href) = link.value().attr("href") {
+                    let target = decode_bing_target(href).or_else(|| {
+                        href.starts_with("http").then(|| href.to_string()).filter(|h| Url::parse(h).is_ok())
+                    });
+                    let host = target.as_deref().and_then(|t| Url::parse(t).ok()).and_then(|u| u.host_str().map(str::to_string)).unwrap_or_default();
+                    println!("  HREF_HOST: {} -> {}", host, target.unwrap_or_default());
+                }
+            }
+        }
+        // print first 500 chars
+        println!("SNIPPET: {}", &html[..html.len().min(500)]);
+    }
 
     #[test]
     fn rejects_private_urls() {

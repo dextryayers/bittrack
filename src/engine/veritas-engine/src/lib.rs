@@ -1598,7 +1598,23 @@ mod tests {
     /// End-to-end check against the real 1.9 GB GGUF model. Run with:
     /// `cargo test -p veritas-engine real_model -- --ignored --nocapture`
     #[test]
-    #[ignore = "requires the downloaded GGUF model"]
+    #[ignore = "network debug"]
+    fn debug_bing() {
+        match fetch::bing_search("Vaksin COVID-19 microchip 5G cek fakta", 10) {
+            Ok(hits) => {
+                println!("BING HITS: {}", hits.len());
+                for h in hits {
+                    println!("  [{}] {} | {} | {}", h.kind, h.source, h.score, h.url);
+                }
+            }
+            Err(e) => println!("BING ERROR: {e}"),
+        }
+    }
+
+    /// End-to-end check against the real 1.9 GB GGUF model. Run with:
+    /// `cargo test -p veritas-engine real_model -- --ignored --nocapture`
+    #[test]
+    #[ignore = "requires the uploaded GGUF model"]
     fn real_model_produces_parseable_verdict() {
         let engine = veritas_init(std::ptr::null());
         assert!(!engine.is_null());
