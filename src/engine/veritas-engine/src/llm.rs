@@ -131,13 +131,36 @@ impl Llm {
         let model = LlamaModel::load_from_file(backend, path, &params)
             .map_err(|e| LlmError::Load(e.to_string()))?;
         let template = model.chat_template(None).ok();
+        let train_ctx = model.n_ctx_train();
+        // Never ask llama.cpp for more context than the model was trained on.
+        // Some small models ship 2K context; silently requesting 8K makes every
+        // long prompt fail with an opaque allocation error.
+        let effective_ctx = if train_ctx > 0 {
+            n_ctx.min(train_ctx)
+        } else {
+            n_ctx
+        }
+        .clamp(256, 32_768);
         Ok(Self {
             model,
             template,
             threads: threads.clamp(1, 16),
-            n_ctx: n_ctx.clamp(1024, 32768),
+            n_ctx: effective_ctx,
             n_batch: 512,
         })
+    }
+
+    /// Effective context window in tokens after clamping to the model's
+    /// training context.
+    #[must_use]
+    pub fn context_tokens(&self) -> u32 {
+        self.n_ctx
+    }
+
+    /// Whether the model embeds its own chat template.
+    #[must_use]
+    pub fn has_chat_template(&self) -> bool {
+        self.template.is_some()
     }
 
     /// Generate a JSON object following [`OUTPUT_SCHEMA`].

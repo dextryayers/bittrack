@@ -4,51 +4,68 @@
              x:Class="Veritas.App.Views.PosterView"
              x:DataType="vm:MainViewModel">
     <ScrollViewer>
-        <StackPanel Margin="32" Spacing="20" MaxWidth="980">
-            <StackPanel Spacing="4">
-                <TextBlock Text="Analisis poster" Classes="h1" />
-                <TextBlock Text="Unggah poster berita, ekstrak teksnya dengan OCR lokal Windows, lalu analisis dengan model GGUF." Classes="muted" TextWrapping="Wrap" />
-            </StackPanel>
+        <StackPanel Margin="46,38,46,46" MaxWidth="1040" HorizontalAlignment="Center">
+            <TextBlock Text="POSTER" Classes="eyebrow" />
+            <TextBlock Text="Baca poster, lalu periksa klaimnya." Classes="h1" Margin="0,8,0,6" />
+            <TextBlock Classes="lede" MaxWidth="700"
+                       Text="OCR berjalan di perangkat memakai Windows.Media.Ocr. Hasil bacaan bisa salah, jadi periksa teks sebelum dianalisis. Gambar tidak dikirim ke mana pun." />
 
-            <Border Classes="card">
-                <StackPanel Spacing="16">
-                    <StackPanel Orientation="Horizontal" Spacing="12">
-                        <Button Content="Pilih gambar poster" Classes="primary" Command="{Binding PickPosterCommand}" IsEnabled="{Binding !IsOcrBusy}" />
-                        <Button Content="Bersihkan" Classes="ghost" Command="{Binding ClearPosterCommand}" />
-                        <ProgressBar IsVisible="{Binding IsOcrBusy}" IsIndeterminate="True" Width="180" VerticalAlignment="Center" />
+            <Grid ColumnDefinitions="1*,1*" ColumnSpacing="22" Margin="0,26,0,0">
+                <Border Classes="panel">
+                    <StackPanel Spacing="14">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="GAMBAR POSTER" Classes="eyebrow" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="PNG · JPG · BMP · WEBP · TIFF" Classes="meta" />
+                        </Grid>
+
+                        <Border x:Name="PosterDropZone" Background="{DynamicResource PanelAltBrush}"
+                                BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1"
+                                CornerRadius="2" Height="318" ClipToBounds="True">
+                            <Panel>
+                                <Image Source="{Binding PosterPreview}" Stretch="Uniform" Margin="10"
+                                       IsVisible="{Binding HasPosterPreview}" />
+                                <StackPanel IsVisible="{Binding !HasPosterPreview}" Spacing="8"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
+                                    <TextBlock Text="Jatuhkan gambar di sini" Classes="h3" HorizontalAlignment="Center" />
+                                    <TextBlock Classes="prose muted" TextAlignment="Center"
+                                               Text="atau pilih file. Teks akan diekstrak otomatis oleh OCR lokal." />
+                                </StackPanel>
+                            </Panel>
+                        </Border>
+
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="{Binding PosterStatus}" Classes="faint" TextWrapping="Wrap"
+                                       VerticalAlignment="Center" Margin="0,0,14,0" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <Button Content="Bersihkan" Classes="quiet" Command="{Binding ClearPosterCommand}"
+                                        IsEnabled="{Binding !IsOcrBusy}" />
+                                <Button Content="Pilih gambar" Command="{Binding PickPosterCommand}"
+                                        IsEnabled="{Binding !IsOcrBusy}" />
+                            </StackPanel>
+                        </Grid>
+                        <ProgressBar IsVisible="{Binding IsOcrBusy}" IsIndeterminate="True" />
                     </StackPanel>
+                </Border>
 
-                    <Border Classes="cardAlt" MinHeight="180" IsVisible="{Binding HasPosterPreview}">
-                        <Image Source="{Binding PosterPreview}" Stretch="Uniform" MaxHeight="320" />
-                    </Border>
-
-                    <TextBlock Text="{Binding PosterImagePath}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
-                    <TextBlock Text="{Binding PosterStatus}" Classes="muted" TextWrapping="Wrap" />
-
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="Teks hasil OCR (bisa diperbaiki)" Classes="label" />
-                        <TextBox Text="{Binding PosterText}"
-                                 AcceptsReturn="True"
-                                 TextWrapping="Wrap"
-                                 MinHeight="160"
-                                 PlaceholderText="Teks poster akan muncul di sini, atau tempel teks poster secara manual..." />
+                <Border Grid.Column="1" Classes="panel">
+                    <StackPanel Spacing="14">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="TEKS HASIL OCR" Classes="eyebrow" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="DAPAT DIEDIT" Classes="meta" />
+                        </Grid>
+                        <TextBox Text="{Binding PosterText, Mode=TwoWay}"
+                                 PlaceholderText="Teks hasil OCR akan muncul di sini, atau tempel teks poster secara manual..."
+                                 AcceptsReturn="True" TextWrapping="Wrap"
+                                 Height="318" VerticalContentAlignment="Top" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Classes="faint" TextWrapping="Wrap" VerticalAlignment="Center"
+                                       Text="Model hanya melihat teks, bukan gambar. Perbaiki salah baca agar penilaian tidak bias." />
+                            <Button Grid.Column="1" Content="Analisis poster" Classes="primary"
+                                    Command="{Binding AnalyzePosterCommand}" IsEnabled="{Binding !IsBusy}" />
+                        </Grid>
                     </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Spacing="12">
-                        <Button Content="Analisis poster" Classes="primary" Command="{Binding AnalyzePosterCommand}" IsEnabled="{Binding !IsBusy}" />
-                        <ProgressBar IsVisible="{Binding IsBusy}" Minimum="0" Maximum="100" Value="{Binding AnalysisProgress}" Width="200" VerticalAlignment="Center" />
-                    </StackPanel>
-                    <TextBlock Text="{Binding Status}" Classes="muted" TextWrapping="Wrap" />
-                </StackPanel>
-            </Border>
-
-            <Border Classes="card">
-                <StackPanel Spacing="8">
-                    <TextBlock Text="Catatan" Classes="h2" />
-                    <TextBlock Text="OCR berjalan di perangkat dan hasilnya bisa salah, terutama pada poster dengan tulisan dekoratif atau resolusi rendah. Periksa teks sebelum menekan Analisis poster. Hasil analisis muncul di tab Analisis."
-                               Classes="muted" TextWrapping="Wrap" />
-                </StackPanel>
-            </Border>
+                </Border>
+            </Grid>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

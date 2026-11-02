@@ -1,12 +1,16 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.Platform;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -22,10 +26,15 @@ namespace Veritas.App.ViewModels;
 
 public partial class MainViewModel : ObservableObject, IDisposable
 {
+    private readonly SemaphoreSlim _modelGate = new(1, 1);
     private NativeEngine _engine;
     private readonly HistoryService _historyService;
     private readonly SettingsService _settingsService;
+    private readonly string _modelDirectory;
     private Bitmap? _posterPreview;
+    private AnalyzeResponse? _lastResponse;
+    private int _engineGeneration;
+    private bool _suppressModelReload;
 
     [ObservableProperty]
     private string _inputText = string.Empty;
@@ -52,7 +61,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private string _resultVerdict = string.Empty;
 
     [ObservableProperty]
+    private string _resultVerdictLabel = string.Empty;
+
+    [ObservableProperty]
     private double _resultConfidence;
+
+    [ObservableProperty]
+    private string _resultConfidenceDisplay = string.Empty;
 
     [ObservableProperty]
     private int _resultTruthPercentage;
@@ -85,7 +100,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private ModelInfo? _selectedModel;
 
     [ObservableProperty]
-    private double _downloadPercent;
+    private bool _isModelLoading;
+
+    [ObservableProperty]
+    private string _modelLoadStatus = "Belum ada model yang dimuat.";
+
+    [ObservableProperty]
+    private string _selectedModelMeta = "Unggah model GGUF untuk memulai.";
+
+    [ObservableProperty]
+    private bool _hasUsableModel;
 
     [ObservableProperty]
     private bool _hasModels;
@@ -111,21 +135,49 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _resultModel = string.Empty;
 
-    public ObservableCollection<Claim> ResultClaims { get; } = new();
-    public ObservableCollection<Evidence> ResultEvidence { get; } = new();
+    [ObservableProperty]
+    private string _resultAuditLine = string.Empty;
+
+    [ObservableProperty]
+    private int _resultDomainScore;
+
+    [ObservableProperty]
+    private int _resultBuzzerScore;
+
+    [ObservableProperty]
+    private int _resultClickbaitScore;
+
+    [ObservableProperty]
+    private string _historyQuery = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasHistory;
+
+    [ObservableProperty]
+    private bool _hasRecentHistory;
+
+    [ObservableProperty]
+    private bool _isImportingModel;
+
+    [ObservableProperty]
+    private string _importStatus = string.Empty;
+
+    public ObservableCollection<Claim> ResultClaims { get; } = new();    public ObservableCollection<Evidence> ResultEvidence { get; } = new();
     public ObservableCollection<string> ResultSignals { get; } = new();
     public ObservableCollection<string> ResultWarnings { get; } = new();
     public ObservableCollection<string> ResultRedFlags { get; } = new();
     public ObservableCollection<HistoryEntry> History { get; } = new();
+    public ObservableCollection<HistoryEntry> RecentHistory { get; } = new();
     public ObservableCollection<ModelInfo> Models { get; } = new();
 
     public string[] LanguageOptions { get; } = { "id", "en" };
     public string[] ThemeOptions { get; } = { "system", "light", "dark" };
 
-    [ObservableProperty]
-    private bool _hasHistory;
-
     public AppSettings Settings { get; }
+
+    public string ModelDirectory => _modelDirectory;
+
+    public string AppVersion => "1.0.0-alpha";
 
     public Bitmap? PosterPreview
     {
@@ -147,24 +199,29 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Veritas");
         Directory.CreateDirectory(baseDir);
+        _modelDirectory = Path.Combine(baseDir, "models");
+        Directory.CreateDirectory(_modelDirectory);
+
         _settingsService = new SettingsService(Path.Combine(baseDir, "settings.json"));
         Settings = _settingsService.Load();
         SanitizeSettings();
+        Settings.PropertyChanged += (_, _) => _settingsService.Save(Settings);
 
-        var config = JsonSerializer.Serialize(new
-        {
-            model_id = Settings.ModelId,
-            threads = Math.Clamp(Environment.ProcessorCount, 1, 8),
-            context_tokens = 8192,
-            max_output_tokens = 1400,
-            online_evidence = Settings.OnlineEvidence,
-        });
-        _engine = new NativeEngine(config);
+        _engine = CreateEngine();
         _historyService = new HistoryService(Path.Combine(baseDir, "history.sqlite"));
         ApplyTheme(Settings.Theme);
         LoadHistory();
-        _ = RefreshModelsAsync();
+        _ = InitializeModelsAsync();
     }
+
+    private NativeEngine CreateEngine() => new(JsonSerializer.Serialize(new
+    {
+        model_id = string.IsNullOrWhiteSpace(Settings.ModelId) ? null : Settings.ModelId,
+        threads = Math.Clamp(Environment.ProcessorCount, 1, 8),
+        context_tokens = 8192,
+        max_output_tokens = 1400,
+        online_evidence = Settings.OnlineEvidence,
+    }));
 
     private void SanitizeSettings()
     {
@@ -180,6 +237,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _settingsService.Save(Settings);
     }
 
+    private async Task InitializeModelsAsync()
+    {
+        await RefreshModelsAsync();
+        if (SelectedModel is { Installed: true, Compatible: true } model)
+        {
+            await SwitchModelAsync(model);
+        }
+    }
+
     [RelayCommand]
     private async Task AnalyzeAsync()
     {
@@ -188,7 +254,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         bool hasComments = !string.IsNullOrWhiteSpace(InputComments);
         if (!hasText && !hasUrl && !hasComments)
         {
-            Status = "Masukkan teks berita, tautan, atau komentar terlebih dahulu.";
+            Status = "Masukkan teks, tautan, atau komentar terlebih dahulu.";
+            return;
+        }
+
+        if (IsBusy)
+        {
             return;
         }
 
@@ -202,7 +273,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         string historyInput = hasUrl
             ? InputUrl.Trim()
             : hasText
-                ? InputText
+                ? InputText.Trim()
                 : "Komentar: " + InputComments.Trim();
 
         await RunAnalysisAsync(request, historyInput);
@@ -214,6 +285,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (string.IsNullOrWhiteSpace(PosterText))
         {
             PosterStatus = "Teks poster masih kosong. Pilih gambar atau tempel teks hasil OCR.";
+            return;
+        }
+        if (IsBusy)
+        {
             return;
         }
 
@@ -231,7 +306,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private AnalyzeOptions BuildOptions() => new(
         Threshold: Settings.Threshold,
-        OnlineEvidence: Settings.OnlineEvidence);
+        IncludeHeuristics: true,
+        MaxClaims: 8,
+        OnlineEvidence: Settings.OnlineEvidence,
+        StrictVerification: Settings.StrictVerification);
 
     private async Task RunAnalysisAsync(AnalyzeRequest request, string historyInput)
     {
@@ -239,20 +317,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
         HasResult = false;
         ResultOpacity = 0;
         AnalysisProgress = 0;
-        ResultClaims.Clear();
-        ResultEvidence.Clear();
-        ResultSignals.Clear();
-        ResultWarnings.Clear();
-        ResultRedFlags.Clear();
+        ClearResultCollections();
         Status = "Menganalisis...";
 
         try
         {
             var resp = await Task.Run(() => _engine.Analyze(request, ReportProgress));
-            ApplyResult(resp);
-            _historyService.Add(historyInput, resp.Verdict, resp.Confidence, resp.Summary);
+            ApplyResult(resp, navigate: true);
+            _historyService.Add(
+                historyInput,
+                resp.Verdict,
+                resp.Confidence,
+                resp.Summary,
+                JsonSerializer.Serialize(resp));
             LoadHistory();
-            Status = $"Selesai dalam mode lokal: {resp.Audit.Model}";
+            Status = "Analisis selesai. Periksa bukti sebelum menyimpulkan.";
         }
         catch (Exception ex)
         {
@@ -275,7 +354,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 "fetch" => "Mengambil isi tautan...",
                 "retrieve" => "Mencari bukti dari sumber tepercaya...",
                 "load_model" => ev.Message,
+                "prompt" => "Menyusun prompt...",
                 "generate" => $"Model menganalisis: {ev.Message}",
+                "retry" => "Mengulang karena keluaran tidak sesuai skema...",
+                "verify" => "Verifikasi ketat: menjalankan inferensi kedua...",
                 "map" => "Menyusun hasil...",
                 "done" => "Selesai.",
                 _ => $"{ev.Stage}: {ev.Message}",
@@ -290,13 +372,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Dispatcher.UIThread.Post(Update);
     }
 
-    private void ApplyResult(AnalyzeResponse resp)
+    private void ApplyResult(AnalyzeResponse resp, bool navigate)
     {
+        _lastResponse = resp;
         ResultVerdict = resp.Verdict;
+        ResultVerdictLabel = VerdictLabel(resp.Verdict);
         ResultConfidence = resp.Confidence;
+        ResultConfidenceDisplay = $"{resp.Confidence * 100:0}%";
         ResultTruthPercentage = resp.TruthPercentage;
         ResultAiPercentage = resp.AiPercentage;
         ResultSummary = resp.Summary;
+        ResultDomainScore = (int)Math.Round(resp.Heuristics.DomainScore * 100);
+        ResultBuzzerScore = (int)Math.Round(resp.Heuristics.BuzzerScore * 100);
+        ResultClickbaitScore = (int)Math.Round(resp.Heuristics.ClickbaitScore * 100);
+
+        ClearResultCollections();
         foreach (var claim in resp.Claims)
         {
             ResultClaims.Add(claim);
@@ -317,16 +407,46 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             ResultRedFlags.Add(flag);
         }
+
         HasClaims = ResultClaims.Count > 0;
         HasEvidence = ResultEvidence.Count > 0;
         HasSignals = ResultSignals.Count > 0;
         HasWarnings = ResultWarnings.Count > 0;
         HasRedFlags = ResultRedFlags.Count > 0;
         ResultModel = resp.Audit.Model;
+        ResultAuditLine = $"{resp.Audit.Model} · prompt {resp.Audit.PromptVersion} · engine {resp.Audit.EngineVersion}";
         HasResult = true;
         ResultOpacity = 1;
-        SelectedPageIndex = 1;
+        if (navigate)
+        {
+            SelectedPageIndex = 1;
+        }
     }
+
+    private void ClearResultCollections()
+    {
+        ResultClaims.Clear();
+        ResultEvidence.Clear();
+        ResultSignals.Clear();
+        ResultWarnings.Clear();
+        ResultRedFlags.Clear();
+        HasClaims = false;
+        HasEvidence = false;
+        HasSignals = false;
+        HasWarnings = false;
+        HasRedFlags = false;
+    }
+
+    private static string VerdictLabel(string verdict) => verdict switch
+    {
+        "hoax" => "Hoaks",
+        "misleading" => "Menyesatkan",
+        "clickbait" => "Clickbait",
+        "buzzer" => "Buzzer",
+        "valid" => "Valid",
+        "unverifiable" => "Tidak terverifikasi",
+        _ => verdict,
+    };
 
     [RelayCommand]
     private async Task PickPosterAsync()
@@ -336,7 +456,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             return;
         }
+        await LoadPosterAsync(path);
+    }
 
+    public async Task LoadPosterAsync(string path)
+    {
         PosterImagePath = path;
         try
         {
@@ -379,7 +503,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private static async Task<string?> PickImageAsync()
     {
         if (Application.Current?.ApplicationLifetime
-            is not Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            is not IClassicDesktopStyleApplicationLifetime desktop
             || desktop.MainWindow is null)
         {
             return null;
@@ -407,30 +531,214 @@ public partial class MainViewModel : ObservableObject, IDisposable
         InputText = string.Empty;
         InputUrl = string.Empty;
         InputComments = string.Empty;
+        ClearResult();
+        Status = "Siap.";
+    }
+
+    private void ClearResult()
+    {
         HasResult = false;
         ResultOpacity = 0;
-        ResultClaims.Clear();
-        ResultEvidence.Clear();
-        ResultSignals.Clear();
-        ResultWarnings.Clear();
-        ResultRedFlags.Clear();
-        HasClaims = false;
-        HasEvidence = false;
-        HasSignals = false;
-        HasWarnings = false;
-        HasRedFlags = false;
-        Status = "Siap.";
+        _lastResponse = null;
+        ClearResultCollections();
+    }
+
+    [RelayCommand]
+    private void OpenAnalyze()
+    {
+        SelectedPageIndex = 1;
+    }
+
+    [RelayCommand]
+    private void OpenPoster()
+    {
+        SelectedPageIndex = 2;
+    }
+
+    [RelayCommand]
+    private void OpenSettings()
+    {
+        SelectedPageIndex = 4;
+    }
+
+    [RelayCommand]
+    private void Navigate(string? page)
+    {
+        if (int.TryParse(page, out int index))
+        {
+            SelectedPageIndex = Math.Clamp(index, 0, 5);
+        }
+    }
+
+    [RelayCommand]
+    private async Task CopyResultAsync()
+    {
+        if (_lastResponse is null)
+        {
+            return;
+        }
+        await SetClipboardTextAsync(BuildResultText(_lastResponse));
+        Status = "Hasil disalin ke papan klip.";
+    }
+
+    private static string BuildResultText(AnalyzeResponse resp)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("VERITAS — HASIL ANALISIS");
+        sb.AppendLine(VerdictLabel(resp.Verdict).ToUpperInvariant());
+        sb.AppendLine($"Keyakinan model: {resp.Confidence * 100:0}%");
+        sb.AppendLine($"Perkiraan kebenaran (belum terkalibrasi): {resp.TruthPercentage}%");
+        sb.AppendLine($"Perkiraan tulisan AI (eksperimental): {resp.AiPercentage}%");
+        sb.AppendLine();
+        sb.AppendLine(resp.Summary);
+        if (resp.Claims.Length > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("KLAIM");
+            foreach (var claim in resp.Claims)
+            {
+                sb.AppendLine($"{claim.Id}. [{VerdictLabel(claim.Verdict)}] {claim.Text}");
+                if (!string.IsNullOrWhiteSpace(claim.Reasoning))
+                {
+                    sb.AppendLine($"   {claim.Reasoning}");
+                }
+            }
+        }
+        if (resp.Evidence.Length > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("BUKTI");
+            foreach (var evidence in resp.Evidence)
+            {
+                sb.AppendLine($"[{evidence.Id}] {evidence.Source} — {evidence.Url}");
+                sb.AppendLine($"   {evidence.Text}");
+            }
+        }
+        if (resp.Warnings.Length > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("CATATAN");
+            foreach (var warning in resp.Warnings)
+            {
+                sb.AppendLine($"- {warning}");
+            }
+        }
+        sb.AppendLine();
+        sb.AppendLine($"Model: {resp.Audit.Model}");
+        sb.AppendLine($"Prompt: {resp.Audit.PromptVersion}");
+        sb.AppendLine($"Input hash: {resp.Audit.InputHash}");
+        return sb.ToString();
+    }
+
+    [RelayCommand]
+    private async Task OpenEvidenceAsync(Evidence? evidence)
+    {
+        if (evidence is null)
+        {
+            return;
+        }
+        if (!Uri.TryCreate(evidence.Url, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            Status = "Tautan bukti tidak valid.";
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo { FileName = uri.AbsoluteUri, UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Status = $"Gagal membuka tautan: {ex.Message}";
+        }
+        await Task.CompletedTask;
+    }
+
+    [RelayCommand]
+    private async Task CopyEvidenceAsync(Evidence? evidence)
+    {
+        if (evidence is null)
+        {
+            return;
+        }
+        await SetClipboardTextAsync(evidence.Url);
+        Status = "Tautan bukti disalin.";
+    }
+
+    private static async Task SetClipboardTextAsync(string text)
+    {
+        if (Application.Current?.ApplicationLifetime
+            is IClassicDesktopStyleApplicationLifetime { MainWindow: { } window })
+        {
+            var clipboard = window.Clipboard;
+            if (clipboard is not null)
+            {
+                await clipboard.SetTextAsync(text);
+            }
+        }
     }
 
     [RelayCommand]
     private void LoadHistory()
     {
         History.Clear();
-        foreach (var item in _historyService.List())
+        foreach (var item in _historyService.Search(HistoryQuery))
         {
             History.Add(item);
         }
+        RecentHistory.Clear();
+        foreach (var item in History.Take(3))
+        {
+            RecentHistory.Add(item);
+        }
         HasHistory = History.Count > 0;
+        HasRecentHistory = RecentHistory.Count > 0;
+    }
+
+    partial void OnHistoryQueryChanged(string value) => LoadHistory();
+
+    [RelayCommand]
+    private void OpenHistory(HistoryEntry? entry)
+    {
+        if (entry is null)
+        {
+            return;
+        }
+        if (!entry.CanReopen)
+        {
+            Status = "Hasil lengkap tidak tersimpan untuk catatan lama ini. Jalankan analisis ulang.";
+            return;
+        }
+        try
+        {
+            var resp = JsonSerializer.Deserialize<AnalyzeResponse>(entry.ResultJson);
+            if (resp is null)
+            {
+                Status = "Hasil tersimpan tidak dapat dibaca.";
+                return;
+            }
+            ApplyResult(resp, navigate: true);
+            Status = $"Membuka riwayat {entry.CreatedAtDisplay}.";
+        }
+        catch (JsonException ex)
+        {
+            Status = $"Hasil tersimpan rusak: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void DeleteHistory(HistoryEntry? entry)
+    {
+        if (entry is null)
+        {
+            return;
+        }
+        if (_historyService.Delete(entry.Id))
+        {
+            Status = "Satu catatan riwayat dihapus.";
+            LoadHistory();
+        }
     }
 
     [RelayCommand]
@@ -438,6 +746,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         _historyService.Clear();
         LoadHistory();
+        Status = "Riwayat dihapus.";
     }
 
     [RelayCommand]
@@ -447,15 +756,34 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             var list = await Task.Run(() => _engine.ListModels());
             string previousId = SelectedModel?.Id ?? Settings.ModelId;
-            Models.Clear();
-            foreach (var model in list)
+            _suppressModelReload = true;
+            try
             {
-                Models.Add(model);
+                Models.Clear();
+                foreach (var model in list)
+                {
+                    Models.Add(model);
+                }
+                HasModels = Models.Count > 0;
+                SelectedModel = Models.FirstOrDefault(m => m.Id == previousId)
+                                ?? Models.FirstOrDefault(m => m.Installed && m.Compatible)
+                                ?? Models.FirstOrDefault(m => m.Installed)
+                                ?? Models.FirstOrDefault();
             }
-            HasModels = Models.Count > 0;
-            SelectedModel = Models.FirstOrDefault(m => m.Id == previousId)
-                            ?? Models.FirstOrDefault(m => m.Installed)
-                            ?? Models.FirstOrDefault();
+            finally
+            {
+                _suppressModelReload = false;
+            }
+
+            if (SelectedModel is { } selected)
+            {
+                ApplyModelSummary(selected);
+            }
+            else
+            {
+                SelectedModelMeta = "Belum ada file model di folder model.";
+                ModelLoadStatus = "Unggah model GGUF untuk memulai.";
+            }
         }
         catch (Exception ex)
         {
@@ -463,12 +791,30 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void ApplyModelSummary(ModelInfo model)
+    {
+        SelectedModelMeta = $"{model.Name}\n{model.MetaLine}";
+        if (!model.Compatible)
+        {
+            HasUsableModel = false;
+            ModelLoadStatus = "Model tidak kompatibel untuk analisis.";
+        }
+        else if (IsModelLoading)
+        {
+            ModelLoadStatus = "Memuat model...";
+        }
+    }
+
     [RelayCommand]
     private async Task UploadModelAsync()
     {
-        var lifetime = (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime);
-        var window = lifetime?.MainWindow;
-        if (window is null)
+        if (IsBusy || IsModelLoading || IsImportingModel)
+        {
+            return;
+        }
+
+        if (Application.Current?.ApplicationLifetime
+            is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } window })
         {
             Status = "Jendela utama tidak tersedia.";
             return;
@@ -480,79 +826,330 @@ public partial class MainViewModel : ObservableObject, IDisposable
             AllowMultiple = false,
             FileTypeFilter = new[]
             {
-                new FilePickerFileType("Model GGUF") { Patterns = new[] { "*.gguf" } }
+                new FilePickerFileType("Model GGUF") { Patterns = new[] { "*.gguf", "*.GGUF" } }
             }
         });
-        if (files is null || files.Count == 0)
+        if (files.Count == 0)
         {
             return;
         }
 
-        string sourcePath = files[0].Path.LocalPath;
+        string? sourcePath = files[0].TryGetLocalPath();
         if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
         {
-            Status = "File model tidak valid.";
+            Status = "File model tidak dapat dibaca dari penyimpanan lokal.";
             return;
         }
 
-        string modelDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Veritas", "models");
-        Directory.CreateDirectory(modelDir);
-        string destName = Path.GetFileName(sourcePath);
-        string destPath = Path.Combine(modelDir, destName);
+        await ImportModelAsync(sourcePath);
+    }
 
-        Status = $"Menyalin {destName} ke penyimpanan permanen...";
+    public async Task ImportDroppedModelAsync(string sourcePath)
+    {
+        if (IsBusy || IsModelLoading || IsImportingModel)
+        {
+            Status = "Tunggu proses yang sedang berjalan sebelum mengimpor model.";
+            return;
+        }
+        if (!File.Exists(sourcePath))
+        {
+            Status = "File yang dijatuhkan tidak ditemukan.";
+            return;
+        }
+        await ImportModelAsync(sourcePath);
+    }
+
+    private async Task ImportModelAsync(string sourcePath)
+    {        var fileInfo = new FileInfo(sourcePath);
+        if (fileInfo.Length < 1024 * 1024)
+        {
+            Status = "File terlalu kecil untuk menjadi model GGUF yang valid.";
+            return;
+        }
+
+        ModelInspection inspection;
         try
         {
-            await Task.Run(() => File.Copy(sourcePath, destPath, overwrite: true));
-            Status = $"Model {destName} tersimpan permanen.";
+            inspection = await Task.Run(() => _engine.InspectModel(sourcePath));
         }
         catch (Exception ex)
         {
-            Status = $"Gagal menyimpan model: {ex.Message}";
+            Status = $"File bukan model GGUF yang dapat dibaca: {ex.Message}";
             return;
         }
 
+        if (!inspection.Compatible)
+        {
+            Status = $"Model ditolak: {inspection.Error ?? "format tidak didukung"}.";
+            return;
+        }
+
+        string destName = SanitizeModelFileName(fileInfo.Name);
+        string destPath = UniqueModelPath(destName);
+        string tempPath = destPath + ".part";
+
+        IsImportingModel = true;
+        ImportStatus = $"Menyiapkan {destName}...";
+        try
+        {
+            await Task.Run(() => CopyFileWithProgress(sourcePath, tempPath, destName));
+            File.Move(tempPath, destPath);
+            Status = inspection.Warnings.Length > 0
+                ? $"Model {destName} diimpor. Catatan: {inspection.Warnings[0]}"
+                : $"Model {destName} diimpor dan lolos inspeksi metadata.";
+        }
+        catch (Exception ex)
+        {
+            TryDelete(tempPath);
+            Status = $"Gagal menyimpan model: {ex.Message}";
+            return;
+        }
+        finally
+        {
+            IsImportingModel = false;
+            ImportStatus = string.Empty;
+        }
+
         await RefreshModelsAsync();
-        var uploadedId = Path.GetFileNameWithoutExtension(destName);
-        SelectedModel = Models.FirstOrDefault(m => m.Id == uploadedId) ?? SelectedModel;
+        string uploadedId = Path.GetFileNameWithoutExtension(destPath);
+        var uploaded = Models.FirstOrDefault(m => m.Id == uploadedId);
+        if (uploaded is null)
+        {
+            Status = "Model tersalin tetapi tidak muncul di daftar. Coba segarkan.";
+            return;
+        }
+
+        if (IsBusy)
+        {
+            Status = "Model tersimpan. Selesaikan analisis berjalan sebelum mengganti model.";
+            return;
+        }
+
+        SelectedModel = uploaded;
+        await SwitchModelAsync(uploaded);
+    }
+
+    private void CopyFileWithProgress(string sourcePath, string destinationPath, string displayName)
+    {
+        const int bufferSize = 1024 * 1024;
+        using var source = new FileStream(
+            sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, useAsync: false);
+        using var dest = new FileStream(
+            destinationPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize, useAsync: false);
+        var buffer = new byte[bufferSize];
+        long total = source.Length;
+        long copied = 0;
+        int read;
+        while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            dest.Write(buffer, 0, read);
+            copied += read;
+            int pct = total > 0 ? (int)(copied * 100 / total) : 0;
+            Dispatcher.UIThread.Post(() => ImportStatus = $"Menyalin {displayName}: {pct}%");
+        }
+        dest.Flush(flushToDisk: true);
+    }
+
+    private static string SanitizeModelFileName(string fileName)
+    {
+        string stem = Path.GetFileNameWithoutExtension(fileName);
+        var invalid = Path.GetInvalidFileNameChars();
+        var cleaned = new string(stem
+            .Select(ch => invalid.Contains(ch) || char.IsControl(ch) ? '-' : ch)
+            .ToArray())
+            .Trim()
+            .Trim('.');
+        if (string.IsNullOrWhiteSpace(cleaned))
+        {
+            cleaned = $"model-{DateTime.UtcNow:yyyyMMddHHmmss}";
+        }
+        if (cleaned.Length > 120)
+        {
+            cleaned = cleaned[..120];
+        }
+        return cleaned + ".gguf";
+    }
+
+    private string UniqueModelPath(string fileName)
+    {
+        string stem = Path.GetFileNameWithoutExtension(fileName);
+        string candidate = Path.Combine(_modelDirectory, fileName);
+        int suffix = 2;
+        while (File.Exists(candidate))
+        {
+            candidate = Path.Combine(_modelDirectory, $"{stem}-{suffix}.gguf");
+            suffix++;
+        }
+        return candidate;
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (IOException)
+        {
+            // Best effort: the partial file is ignored by the model list.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Same as above.
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteModelAsync(ModelInfo? model)
+    {
+        if (model is null || IsBusy || IsModelLoading || IsImportingModel || !model.Installed)
+        {
+            return;
+        }
+
+        await _modelGate.WaitAsync();
+        try
+        {
+            _engine.Dispose();
+            File.Delete(model.Path);
+            if (string.Equals(Settings.ModelId, model.Id, StringComparison.Ordinal))
+            {
+                Settings.ModelId = string.Empty;
+                _settingsService.Save(Settings);
+            }
+            _engine = CreateEngine();
+        }
+        catch (Exception ex)
+        {
+            Status = $"Gagal menghapus model: {ex.Message}";
+            // The engine was disposed before the delete attempt; always restore
+            // a usable handle so the app does not continue with a dead pointer.
+            _engine = CreateEngine();
+            return;
+        }
+        finally
+        {
+            _modelGate.Release();
+        }
+
+        Status = $"Model {model.Name} dihapus.";
+        await RefreshModelsAsync();
+        if (SelectedModel is { Installed: true, Compatible: true } next)
+        {
+            await SwitchModelAsync(next);
+        }
+    }
+
+    [RelayCommand]
+    private void RevealModelsFolder()
+    {
+        try
+        {
+            Directory.CreateDirectory(_modelDirectory);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = _modelDirectory,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            Status = $"Gagal membuka folder model: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private async Task PreloadModelAsync()
+    {
+        if (SelectedModel is { Installed: true, Compatible: true } model)
+        {
+            await SwitchModelAsync(model);
+        }
+        else
+        {
+            Status = "Pilih model yang kompatibel terlebih dahulu.";
+        }
     }
 
     partial void OnSelectedModelChanged(ModelInfo? value)
     {
         if (value is null)
         {
+            HasUsableModel = false;
             return;
         }
+
+        ApplyModelSummary(value);
+        if (_suppressModelReload)
+        {
+            return;
+        }
+
         Settings.ModelId = value.Id;
         _settingsService.Save(Settings);
+        if (IsBusy)
+        {
+            ModelLoadStatus = "Analisis sedang berjalan; model baru diterapkan setelah selesai.";
+            return;
+        }
+        _ = SwitchModelAsync(value);
+    }
 
-        // Recreate the engine so the newly selected model is loaded.
+    private async Task SwitchModelAsync(ModelInfo model)
+    {
+        int generation = Interlocked.Increment(ref _engineGeneration);
+        HasUsableModel = false;
+        IsModelLoading = true;
+        ModelLoadStatus = "Memuat model ke RAM...";
+
+        await _modelGate.WaitAsync();
         try
         {
-            _engine.Dispose();
-        }
-        catch
-        {
-            // Ignore disposal errors.
-        }
-        try
-        {
-            var config = JsonSerializer.Serialize(new
+            if (generation != _engineGeneration)
             {
-                model_id = Settings.ModelId,
-                threads = Math.Clamp(Environment.ProcessorCount, 1, 8),
-                context_tokens = 8192,
-                max_output_tokens = 1400,
-                online_evidence = Settings.OnlineEvidence,
-            });
-            _engine = new NativeEngine(config);
-            Status = $"Model aktif: {value.Name}.";
+                return;
+            }
+
+            var previous = _engine;
+            _engine = CreateEngine();
+            previous.Dispose();
+
+            await Task.Run(() => _engine.PreloadModel(ev =>
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (ev.Stage is "load_model" or "model_ready")
+                    {
+                        ModelLoadStatus = ev.Message;
+                    }
+                });
+            }));
+
+            if (generation != _engineGeneration)
+            {
+                return;
+            }
+
+            HasUsableModel = true;
+            ModelLoadStatus = $"Model siap · {model.ContextDisplay}";
+            Status = $"Model aktif: {model.Name}.";
         }
         catch (Exception ex)
         {
-            Status = $"Gagal memuat model: {ex.Message}";
+            HasUsableModel = false;
+            ModelLoadStatus = $"Gagal memuat model: {ex.Message}";
+            Status = $"Model tidak dapat dipakai: {ex.Message}";
+        }
+        finally
+        {
+            if (generation == _engineGeneration)
+            {
+                IsModelLoading = false;
+            }
+            _modelGate.Release();
         }
     }
 
@@ -607,6 +1204,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         _engine.Dispose();
         _historyService.Dispose();
+        _modelGate.Dispose();
         PosterPreview = null;
     }
 }

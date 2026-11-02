@@ -91,6 +91,9 @@ pub struct AnalyzeOptions {
     pub max_claims: u32,
     /// Fetch live fact-check and encyclopedia evidence before inference.
     pub online_evidence: bool,
+    /// Run a second inference with a different seed and demote the verdict when
+    /// the two passes disagree. This doubles latency and is opt-in.
+    pub strict_verification: bool,
 }
 
 impl Default for AnalyzeOptions {
@@ -100,6 +103,7 @@ impl Default for AnalyzeOptions {
             include_heuristics: true,
             max_claims: 8,
             online_evidence: true,
+            strict_verification: false,
         }
     }
 }

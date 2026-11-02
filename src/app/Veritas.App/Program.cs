@@ -12,8 +12,16 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        VelopackApp.Build().Run();
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        try
+        {
+            VelopackApp.Build().Run();
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        }
+        catch (Exception ex)
+        {
+            System.IO.File.WriteAllText("veritas_crash.log", ex.ToString());
+            throw;
+        }
     }
 
     // Avalonia configuration, don't remove; also used by visual designer.

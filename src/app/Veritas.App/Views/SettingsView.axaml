@@ -1,81 +1,165 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Veritas.App.ViewModels"
+             xmlns:models="using:Veritas.Core.Models"
              x:Class="Veritas.App.Views.SettingsView"
              x:DataType="vm:MainViewModel">
     <ScrollViewer>
-        <StackPanel Margin="32" Spacing="20" MaxWidth="760" HorizontalAlignment="Center">
-            <StackPanel Spacing="4">
-                <TextBlock Text="Pengaturan" Classes="h1" />
-                <TextBlock Text="Model GGUF, bukti daring, ambang keputusan, bahasa, dan tampilan." Classes="muted" />
-            </StackPanel>
+        <StackPanel Margin="46,38,46,46" MaxWidth="840" HorizontalAlignment="Center">
+            <TextBlock Text="PENGATURAN" Classes="eyebrow" />
+            <TextBlock Text="Kendali mesin dan tampilan." Classes="h1" Margin="0,8,0,6" />
+            <TextBlock Classes="lede" MaxWidth="680"
+                       Text="Semua model, riwayat, dan pengaturan berada di perangkat ini. Tidak ada telemetri dan tidak ada unggahan ke server." />
 
-            <Border Classes="card">
-                <StackPanel Spacing="16">
-                    <StackPanel Orientation="Horizontal" Spacing="12">
-                        <TextBlock Text="Model" Classes="h2" VerticalAlignment="Center" />
-                        <Button Content="Segarkan" Classes="ghost" Command="{Binding RefreshModelsCommand}" />
-                    </StackPanel>
-                    <TextBlock Text="Model berjalan sepenuhnya lokal. Upload file .gguf untuk menambah model; pilih dari daftar untuk mengaktifkan."
-                               Classes="muted" FontSize="12" TextWrapping="Wrap" />
-                    <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}" Width="420" HorizontalAlignment="Left">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
-                                    <TextBlock Text="{Binding DownloadState}" Classes="muted" FontSize="11" />
-                                </StackPanel>
+            <Border x:Name="ModelDropZone" Classes="panel" Margin="0,28,0,0" DragDrop.AllowDrop="True">
+                <StackPanel Spacing="14">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="MODEL LOKAL" Classes="eyebrow" />
+                            <TextBlock Text="Model GGUF" Classes="h2" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                            <Button Content="Folder model" Classes="quiet" Command="{Binding RevealModelsFolderCommand}" />
+                            <Button Content="Unggah .gguf" Classes="primary" Command="{Binding UploadModelCommand}"
+                                    IsEnabled="{Binding !IsBusy}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Classes="prose muted"
+                               Text="Seret file .gguf ke sini atau unggah lewat dialog. File diperiksa metadata GGUF-nya sebelum disalin, lalu dimuat ke RAM untuk memastikan benar-benar dapat dipakai. Model embedding dan file rusak ditolak." />
+
+                    <Border Classes="soft" IsVisible="{Binding IsImportingModel}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="{Binding ImportStatus}" Classes="mono" />
+                            <ProgressBar IsIndeterminate="True" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1,1,1,1"
+                            CornerRadius="2" MaxHeight="264">
+                        <Grid>
+                            <ListBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel, Mode=TwoWay}"
+                                     IsVisible="{Binding HasModels}" Background="Transparent"
+                                     IsEnabled="{Binding !IsBusy}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="models:ModelInfo">
+                                    <Grid ColumnDefinitions="*,Auto" Margin="2,3">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding MetaLine}" Classes="meta" />
+                                        </StackPanel>
+                                        <Border Grid.Column="1" Classes="tag" Margin="12,0,0,0"
+                                                IsVisible="{Binding Compatible}">
+                                            <TextBlock Text="SIAP" Classes="meta" Foreground="{DynamicResource SuccessBrush}" />
+                                        </Border>
+                                        <Border Grid.Column="1" Classes="tag" Margin="12,0,0,0"
+                                                IsVisible="{Binding !Compatible}">
+                                            <TextBlock Text="TIDAK DIDUKUNG" Classes="meta" Foreground="{DynamicResource DangerBrush}" />
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <StackPanel IsVisible="{Binding !HasModels}" Spacing="6" Margin="18">
+                            <TextBlock Text="Belum ada model di folder." Classes="h3" />
+                            <TextBlock Classes="prose muted"
+                                       Text="Unggah satu file .gguf yang kompatibel dengan llama.cpp, misalnya model instruksi Qwen 2.5 atau Llama 3." />
+                        </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="18">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="{Binding SelectedModelMeta}" Classes="prose" FontSize="13" />
+                            <TextBlock Text="{Binding ModelLoadStatus}" Classes="faint" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button Content="Muat ulang" Classes="quiet" Command="{Binding PreloadModelCommand}"
+                                    IsEnabled="{Binding HasModels}" />
+                            <Button Content="Hapus model" Classes="danger" Click="OnDeleteModelClick"
+                                    IsEnabled="{Binding HasModels}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{Binding SelectedModel.Inspection.Warnings}"
+                                  IsVisible="{Binding SelectedModel.Inspection.HasWarnings}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <Grid ColumnDefinitions="16,*" Margin="0,2">
+                                    <TextBlock Text="—" Classes="meta" Foreground="{DynamicResource WarningBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding}" Classes="faint" TextWrapping="Wrap" />
+                                </Grid>
                             </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                    <TextBlock Text="{Binding SelectedModel.Path}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
-                    <StackPanel Orientation="Horizontal" Spacing="12">
-                        <Button Content="Upload model GGUF" Classes="primary"
-                                Command="{Binding UploadModelCommand}" />
-                    </StackPanel>
-                    <TextBlock Text="{Binding Status}" Classes="muted" TextWrapping="Wrap" />
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
             </Border>
 
-            <Border Classes="card">
+            <Border Classes="panel" Margin="0,20,0,0">
                 <StackPanel Spacing="16">
-                    <TextBlock Text="Ambang keputusan" Classes="h2" />
-                    <TextBlock Text="Jika keyakinan model di bawah ambang ini, hasil ditandai tidak dapat diverifikasi."
-                               Classes="muted" FontSize="12" TextWrapping="Wrap" />
-                    <Slider x:Name="ThresholdSlider" Minimum="0" Maximum="1" Value="{Binding Settings.Threshold}" Width="360" HorizontalAlignment="Left" />
-                    <TextBlock Text="{Binding #ThresholdSlider.Value, StringFormat='Threshold: {0:F2}'}" Classes="muted" />
-                    <CheckBox Content="Cari bukti daring (cek fakta dan Wikipedia)" IsChecked="{Binding Settings.OnlineEvidence}" />
+                    <TextBlock Text="ANALISIS" Classes="eyebrow" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Ambang keyakinan minimum" Classes="h3" />
+                            <TextBlock Classes="faint" TextWrapping="Wrap"
+                                       Text="Verdict di bawah ambang ini diturunkan menjadi tidak terverifikasi oleh engine." />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" Text="{Binding Settings.Threshold, StringFormat='{}{0:P0}'}"
+                                   Classes="mono" VerticalAlignment="Center" />
+                    </Grid>
+                    <Slider Minimum="0" Maximum="0.9" TickFrequency="0.05" IsSnapToTickEnabled="True"
+                            Value="{Binding Settings.Threshold, Mode=TwoWay}" />
+
+                    <Border Classes="rule" />
+
+                    <CheckBox Content="Cari bukti daring saat menganalisis"
+                              IsChecked="{Binding Settings.OnlineEvidence, Mode=TwoWay}" />
+                    <TextBlock Classes="faint" TextWrapping="Wrap" Margin="24,-8,0,0"
+                               Text="Pencarian ke Bing dan Wikipedia Indonesia. Tanpa ini, engine hanya menilai teks masukan dan keyakinannya dibatasi." />
+
+                    <CheckBox Content="Verifikasi ketat: jalankan dua inferensi"
+                              IsChecked="{Binding Settings.StrictVerification, Mode=TwoWay}" />
+                    <TextBlock Classes="faint" TextWrapping="Wrap" Margin="24,-8,0,0"
+                               Text="Jika kedua inferensi berbeda verdict, hasil diturunkan. Ini menguji konsistensi, bukan kebenaran; waktu proses menjadi dua kali lipat." />
                 </StackPanel>
             </Border>
 
-            <Border Classes="card">
+            <Border Classes="panel" Margin="0,20,0,0">
                 <StackPanel Spacing="16">
-                    <TextBlock Text="Bahasa dan tampilan" Classes="h2" />
-                    <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBlock Text="TAMPILAN" Classes="eyebrow" />
+                    <Grid ColumnDefinitions="1*,1*" ColumnSpacing="22">
                         <StackPanel Spacing="6">
-                            <TextBlock Text="Bahasa" Classes="label" />
-                            <ComboBox ItemsSource="{Binding LanguageOptions}" SelectedItem="{Binding Settings.Language}" Width="180" />
+                            <TextBlock Text="Tema" Classes="eyebrow" />
+                            <ComboBox ItemsSource="{Binding ThemeOptions}" SelectedItem="{Binding Settings.Theme, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch" />
                         </StackPanel>
-                        <StackPanel Spacing="6">
-                            <TextBlock Text="Tema" Classes="label" />
-                            <ComboBox ItemsSource="{Binding ThemeOptions}" SelectedItem="{Binding Settings.Theme}" Width="180" />
+                        <StackPanel Grid.Column="1" Spacing="6">
+                            <TextBlock Text="Bahasa instruksi" Classes="eyebrow" />
+                            <ComboBox ItemsSource="{Binding LanguageOptions}" SelectedItem="{Binding Settings.Language, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch" />
                         </StackPanel>
-                    </StackPanel>
-                    <Button Content="Ganti tema sekarang" Classes="ghost" Command="{Binding ToggleThemeCommand}" HorizontalAlignment="Left" />
+                    </Grid>
+                    <TextBlock Classes="faint" TextWrapping="Wrap"
+                               Text="Bahasa mengatur petunjuk bahasa pada prompt. Model tetap dapat menjawab dalam bahasa lain bila masukannya berbeda." />
                 </StackPanel>
             </Border>
 
-            <Border Classes="card">
+            <Border Classes="panel" Margin="0,20,0,0">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="Privasi" Classes="h2" />
-                    <CheckBox Content="Aktifkan telemetri anonim (opt-in, tanpa konten)" IsChecked="{Binding Settings.TelemetryEnabled}" />
-                    <TextBlock Text="Inferensi berjalan lokal. Hanya pencarian bukti yang mengirim kata kunci ke mesin pencari publik; teks lengkap tidak dikirim."
-                               Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    <TextBlock Text="DATA &amp; PRIVASI" Classes="eyebrow" />
+                    <TextBlock Classes="prose muted"
+                               Text="Riwayat lengkap disimpan sebagai SQLite di folder data aplikasi. Model berada di folder model di bawah ini. Tidak ada data yang dikirim ke pihak ketiga selain permintaan pencarian bukti yang Anda aktifkan." />
+                    <TextBlock Text="{Binding ModelDirectory}" Classes="meta" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="Hapus riwayat" Classes="danger" Click="OnClearHistoryClick"
+                                IsEnabled="{Binding HasHistory}" />
+                        <Button Content="Simpan pengaturan" Command="{Binding SaveSettingsCommand}" />
+                    </StackPanel>
+                    <TextBlock Classes="faint" Text="Perubahan juga tersimpan otomatis saat diubah." />
                 </StackPanel>
             </Border>
-
-            <Button Content="Simpan pengaturan" Classes="primary" Command="{Binding SaveSettingsCommand}" HorizontalAlignment="Left" />
-            <TextBlock Text="{Binding Status}" Classes="muted" TextWrapping="Wrap" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>

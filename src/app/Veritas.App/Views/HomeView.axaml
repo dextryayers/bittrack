@@ -1,121 +1,138 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Veritas.App.ViewModels"
+             xmlns:svc="using:Veritas.Core.Services"
+             xmlns:conv="using:Veritas.App.Converters"
              x:Class="Veritas.App.Views.HomeView"
              x:DataType="vm:MainViewModel">
+    <UserControl.Resources>
+        <conv:VerdictToBrushConverter x:Key="VerdictBrush" />
+    </UserControl.Resources>
+
     <ScrollViewer>
-        <StackPanel Margin="32" Spacing="0" MaxWidth="980" HorizontalAlignment="Center">
-        <Border CornerRadius="22" Padding="28" Margin="0,0,0,24" ClipToBounds="True">
-            <Border.Background>
-                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-                    <GradientStop Color="#0B1526" Offset="0" />
-                    <GradientStop Color="#182741" Offset="0.55" />
-                    <GradientStop Color="#3A1220" Offset="1" />
-                </LinearGradientBrush>
-            </Border.Background>
+        <StackPanel Margin="48,42,48,40" MaxWidth="1040" HorizontalAlignment="Center">
+
             <Grid ColumnDefinitions="*,Auto">
-                <StackPanel Spacing="14">
-                    <StackPanel Orientation="Horizontal" Spacing="14">
-                        <Border Width="56" Height="56" CornerRadius="16" Background="#22FFFFFF" Padding="6">
-                            <Image Source="/Assets/logo.png" />
-                        </Border>
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="Veritas" FontSize="30" FontWeight="Bold" Foreground="White" />
-                            <TextBlock Text="Analisis hoaks dengan model GGUF lokal" Foreground="#A9B7CF" FontSize="13" />
+                <TextBlock Text="MEJA VERIFIKASI FAKTA" Classes="eyebrow" />
+                <TextBlock Grid.Column="1" Text="V1.0-ALPHA · LOKAL" Classes="meta" />
+            </Grid>
+            <Border Classes="accentRule" Margin="0,12,0,0" />
+
+            <Grid ColumnDefinitions="1.55*,1*" Margin="0,30,0,0">
+                <StackPanel Spacing="20" Margin="0,0,54,0">
+                    <TextBlock Classes="display" Text="Periksa klaim sebelum ikut menyebarkan." />
+                    <TextBlock Classes="lede" MaxWidth="600"
+                               Text="Veritas membaca teks, tautan, poster, atau komentar, mencari bukti dari sumber tepercaya, lalu meminta model bahasa lokal menimbang klaim inti. Model berjalan di perangkat ini." />
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="Mulai analisis" Classes="primary" Command="{Binding OpenAnalyzeCommand}" />
+                        <Button Content="Analisis poster" Command="{Binding OpenPosterCommand}" />
+                    </StackPanel>
+
+                    <Border Classes="notice" IsVisible="{Binding !HasUsableModel}" Margin="0,6,0,0">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="MODEL BELUM SIAP" Classes="eyebrow" Foreground="{DynamicResource WarningBrush}" />
+                            <TextBlock Classes="prose"
+                                       Text="Tanpa model GGUF yang berhasil dimuat, engine menolak memberi verdict. Unggah model lokal terlebih dahulu; tidak ada fallback kata kunci yang berpura-pura menjadi analisis." />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Unggah model .gguf" Classes="primary" Command="{Binding UploadModelCommand}" />
+                                <Button Content="Buka pengaturan" Classes="quiet" Command="{Binding OpenSettingsCommand}" />
+                            </StackPanel>
                         </StackPanel>
-                    </StackPanel>
-                    <TextBlock Text="Tempel teks berita, tautan, atau komentar. Model AI lokal menganalisis klaim, mencari bukti dari sumber tepercaya, lalu memberi verdict, ringkasan, dan persentase kebenaran."
-                               Foreground="#C7D2E5" TextWrapping="Wrap" MaxWidth="600" HorizontalAlignment="Left" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Border Background="#1FFFFFFF" CornerRadius="999" Padding="10,4">
-                            <TextBlock Text="Model lokal" Foreground="White" FontSize="11" FontWeight="SemiBold" />
-                        </Border>
-                        <Border Background="#1FFFFFFF" CornerRadius="999" Padding="10,4">
-                            <TextBlock Text="Bukti nyata" Foreground="White" FontSize="11" FontWeight="SemiBold" />
-                        </Border>
-                        <Border Background="#1FFFFFFF" CornerRadius="999" Padding="10,4">
-                            <TextBlock Text="Tanpa simulasi" Foreground="White" FontSize="11" FontWeight="SemiBold" />
-                        </Border>
-                    </StackPanel>
+                    </Border>
                 </StackPanel>
-                <Border Grid.Column="1" Width="92" Height="92" CornerRadius="46" Background="#14FFFFFF"
-                        VerticalAlignment="Center" Margin="24,0,0,0">
-                    <Path Data="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9L10,17Z"
-                          Fill="#FF5A66" Stretch="Uniform" Width="44" Height="44" />
-                </Border>
+
+                <StackPanel Grid.Column="1" Spacing="0">
+                    <TextBlock Text="CARA KERJA" Classes="eyebrow" Margin="0,0,0,10" />
+                    <Border Classes="rule" />
+                    <Grid ColumnDefinitions="34,*" Margin="0,12,0,0">
+                        <TextBlock Text="01" Classes="meta" />
+                        <StackPanel Grid.Column="1" Spacing="3">
+                            <TextBlock Text="Masukan" Classes="h3" />
+                            <TextBlock Classes="prose muted" Text="Teks berita, tautan, hasil OCR poster, atau rangkaian komentar." />
+                        </StackPanel>
+                    </Grid>
+                    <Border Classes="rule" Margin="0,12,0,0" />
+                    <Grid ColumnDefinitions="34,*" Margin="0,12,0,0">
+                        <TextBlock Text="02" Classes="meta" />
+                        <StackPanel Grid.Column="1" Spacing="3">
+                            <TextBlock Text="Bukti" Classes="h3" />
+                            <TextBlock Classes="prose muted" Text="Pencarian dibatasi ke cek fakta, ensiklopedia, dan kanal berita yang dikenal." />
+                        </StackPanel>
+                    </Grid>
+                    <Border Classes="rule" Margin="0,12,0,0" />
+                    <Grid ColumnDefinitions="34,*" Margin="0,12,0,0">
+                        <TextBlock Text="03" Classes="meta" />
+                        <StackPanel Grid.Column="1" Spacing="3">
+                            <TextBlock Text="Pertimbangan model" Classes="h3" />
+                            <TextBlock Classes="prose muted" Text="Model 3B menilai klaim, memecahnya, dan menandai bagian yang meragukan." />
+                        </StackPanel>
+                    </Grid>
+                    <Border Classes="rule" Margin="0,12,0,0" />
+                    <Grid ColumnDefinitions="34,*" Margin="0,12,0,0">
+                        <TextBlock Text="04" Classes="meta" />
+                        <StackPanel Grid.Column="1" Spacing="3">
+                            <TextBlock Text="Keputusan Anda" Classes="h3" />
+                            <TextBlock Classes="prose muted" Text="Hasil adalah bahan pemeriksaan, bukan putusan akhir. Buka buktinya." />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
             </Grid>
-        </Border>
 
-        <Border Classes="card">
-            <StackPanel Spacing="16">
-                <StackPanel Spacing="6">
-                    <TextBlock Text="Tautan berita" Classes="label" />
-                    <TextBox Text="{Binding InputUrl}" PlaceholderText="https://contoh.com/berita/..." />
-                    <TextBlock Text="Isi artikel diambil langsung dari tautan. Jika pengambilan gagal, tempel teksnya di bawah."
-                               Classes="muted" FontSize="11" />
-                </StackPanel>
+            <Border Classes="rule" Margin="0,42,0,26" />
 
-                <StackPanel Spacing="6">
-                    <TextBlock Text="Teks berita" Classes="label" />
-                    <TextBox Text="{Binding InputText}"
-                             AcceptsReturn="True"
-                             TextWrapping="Wrap"
-                             MinHeight="160"
-                             PlaceholderText="Paste teks berita atau artikel di sini..." />
-                </StackPanel>
-
-                <StackPanel Spacing="6">
-                    <TextBlock Text="Komentar pembaca (opsional)" Classes="label" />
-                    <TextBox Text="{Binding InputComments}"
-                             AcceptsReturn="True"
-                             TextWrapping="Wrap"
-                             MinHeight="72"
-                             PlaceholderText="Tempel komentar untuk membantu model mengenali pola buzzer..." />
-                </StackPanel>
-
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                    <Button Content="Analisis sekarang" Classes="primary" Command="{Binding AnalyzeCommand}" IsEnabled="{Binding !IsBusy}" />
-                    <Button Content="Bersihkan" Classes="ghost" Command="{Binding ClearCommand}" />
-                    <ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="False" Minimum="0" Maximum="100"
-                                 Value="{Binding AnalysisProgress}" Width="200" VerticalAlignment="Center" />
-                </StackPanel>
-                <TextBlock Text="{Binding Status}" Classes="muted" TextWrapping="Wrap" />
-            </StackPanel>
-        </Border>
-
-        <StackPanel Margin="0,24,0,8" Spacing="12">
-            <TextBlock Text="Cara kerja" Classes="h2" />
-            <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="12">
-                <Border Grid.Column="0" Classes="cardAlt lift">
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="01" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
-                        <TextBlock Text="Ambil masukan" FontWeight="SemiBold" TextWrapping="Wrap" />
-                        <TextBlock Text="Teks, tautan artikel, komentar, atau teks poster hasil OCR." Classes="muted" FontSize="12" TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="1" Classes="cardAlt lift">
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="02" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
-                        <TextBlock Text="Cari bukti" FontWeight="SemiBold" TextWrapping="Wrap" />
-                        <TextBlock Text="Cek fakta dan ensiklopedia tepercaya diambil langsung dari internet." Classes="muted" FontSize="12" TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="2" Classes="cardAlt lift">
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="03" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
-                        <TextBlock Text="Inferensi GGUF" FontWeight="SemiBold" TextWrapping="Wrap" />
-                        <TextBlock Text="Qwen 2.5 berjalan di perangkat ini dengan keluaran JSON terbatas skema." Classes="muted" FontSize="12" TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="3" Classes="cardAlt lift">
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="04" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
-                        <TextBlock Text="Hasil jujur" FontWeight="SemiBold" TextWrapping="Wrap" />
-                        <TextBlock Text="Verdict, keyakinan, persentase kebenaran, klaim, dan peringatan." Classes="muted" FontSize="12" TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
+            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+                <TextBlock Text="RIWAYAT TERBARU" Classes="eyebrow" />
+                <Button Grid.Column="1" Content="Lihat semua" Classes="link" Command="{Binding NavigateCommand}"
+                        CommandParameter="3" />
             </Grid>
-        </StackPanel>
+
+            <ItemsControl ItemsSource="{Binding RecentHistory}" IsVisible="{Binding HasRecentHistory}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="svc:HistoryEntry">
+                        <StackPanel>
+                            <Button Classes="quiet" HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch" Padding="0,12"
+                                    Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).OpenHistoryCommand}"
+                                    CommandParameter="{Binding}">
+                                <Grid ColumnDefinitions="136,128,*,Auto">
+                                    <TextBlock Text="{Binding CreatedAtDisplay}" Classes="meta" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding VerdictDisplay}"
+                                               Foreground="{Binding Verdict, Converter={StaticResource VerdictBrush}}"
+                                               FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding InputPreview}" Classes="prose"
+                                               TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="3" Text="{Binding ConfidenceDisplay}" Classes="mono"
+                                               VerticalAlignment="Center" Margin="16,0,0,0" />
+                                </Grid>
+                            </Button>
+                            <Border Classes="rule" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Border Classes="soft" IsVisible="{Binding !HasRecentHistory}">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Belum ada analisis tersimpan." Classes="h3" />
+                    <TextBlock Classes="prose muted"
+                               Text="Hasil pertama akan muncul di sini beserta verdict dan ringkasannya." />
+                </StackPanel>
+            </Border>
+
+            <Border Classes="rule" Margin="0,38,0,24" />
+
+            <Grid ColumnDefinitions="1*,1*" ColumnSpacing="48">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="CATATAN METODE" Classes="eyebrow" />
+                    <TextBlock Classes="prose muted"
+                               Text="Verdict dihasilkan model GGUF lokal melalui llama.cpp. Engine memeriksa apakah klaim merujuk bukti, membatasi keyakinan saat bukti tipis, dan menurunkan verdict tegas menjadi tidak terverifikasi bila tidak ada dukungan. Heuristik domain, buzzer, dan clickbait hanya ditampilkan sebagai konteks." />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="8">
+                    <TextBlock Text="BATAS YANG HARUS DIKETAHUI" Classes="eyebrow" />
+                    <TextBlock Classes="prose muted"
+                               Text="Skor kebenaran dan skor tulisan AI adalah keluaran model yang belum dikalibrasi terhadap benchmark publik; jangan memperlakukannya sebagai probabilitas tervalidasi. Model kecil dapat salah, terutama pada konteks lokal yang tidak tercakup bukti. Verifikasi manual tetap diperlukan." />
+                </StackPanel>
+            </Grid>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

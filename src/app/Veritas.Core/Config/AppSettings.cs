@@ -10,8 +10,8 @@ public sealed class AppSettings : INotifyPropertyChanged
     private double _threshold = 0.5;
     private string _language = "id";
     private string _theme = "system";
-    private bool _telemetryEnabled;
     private bool _onlineEvidence = true;
+    private bool _strictVerification;
 
     public string ModelId
     {
@@ -37,16 +37,16 @@ public sealed class AppSettings : INotifyPropertyChanged
         set => Set(ref _theme, value);
     }
 
-    public bool TelemetryEnabled
-    {
-        get => _telemetryEnabled;
-        set => Set(ref _telemetryEnabled, value);
-    }
-
     public bool OnlineEvidence
     {
         get => _onlineEvidence;
         set => Set(ref _onlineEvidence, value);
+    }
+
+    public bool StrictVerification
+    {
+        get => _strictVerification;
+        set => Set(ref _strictVerification, value);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

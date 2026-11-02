@@ -32,6 +32,8 @@ pub enum ModelTier {
 pub enum ModelStatus {
     /// File present and usable.
     Ready,
+    /// No usable file in the cache directory.
+    Missing,
 }
 
 impl ModelStatus {
@@ -40,6 +42,7 @@ impl ModelStatus {
     pub fn as_str(self) -> &'static str {
         match self {
             ModelStatus::Ready => "ready",
+            ModelStatus::Missing => "missing",
         }
     }
 }
@@ -117,30 +120,48 @@ impl ModelManager {
     }
 
     /// Path where a model is stored.
+    ///
+    /// Returns the exact file on disk even when the uploaded file uses an
+    /// upper-case extension (`.GGUF`), which happens on case-sensitive file
+    /// systems. Falls back to `{id}.gguf` when no file matches.
     #[must_use]
     pub fn model_path(&self, id: &str) -> PathBuf {
+        if let Ok(entries) = fs::read_dir(&self.cache_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !is_gguf(&path) {
+                    continue;
+                }
+                if path.file_stem().and_then(|s| s.to_str()) == Some(id) {
+                    return path;
+                }
+            }
+        }
         self.cache_dir.join(format!("{id}.gguf"))
     }
 
-    /// Status of a model. Always Ready when the file exists.
+    /// Status of a model. Only `Ready` when a non-empty `.gguf` file exists.
     #[must_use]
     pub fn status(&self, id: &str) -> ModelStatus {
         let path = self.model_path(id);
-        if path.is_file() {
-            ModelStatus::Ready
-        } else {
-            ModelStatus::Ready
+        match fs::metadata(&path) {
+            Ok(meta) if meta.is_file() && meta.len() > 0 => ModelStatus::Ready,
+            _ => ModelStatus::Missing,
         }
     }
 
-    /// List all known models: every `.gguf` file in the cache dir.
+    /// List all known models: every usable `.gguf` file in the cache dir.
+    ///
+    /// Hidden files, in-progress downloads (`.part`, `.tmp`, `.download`) and
+    /// empty files are ignored so a half-copied upload never appears as a model
+    /// the user can select.
     #[must_use]
     pub fn list(&self) -> Vec<(ModelSpec, ModelStatus)> {
         let mut out = Vec::new();
         if let Ok(entries) = fs::read_dir(&self.cache_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) != Some("gguf") {
+                if !is_gguf(&path) || is_incomplete(&path) {
                     continue;
                 }
                 let id = path
@@ -152,6 +173,9 @@ impl ModelManager {
                     continue;
                 }
                 let size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                if size == 0 {
+                    continue;
+                }
                 out.push((
                     ModelSpec {
                         id: id.clone(),
@@ -199,8 +223,89 @@ fn dirs_home() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("."))
 }
 
+/// Whether the path has a `.gguf` extension, case-insensitively.
+fn is_gguf(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("gguf"))
+}
+
+/// Whether the file looks like a partial upload rather than a finished model.
+fn is_incomplete(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+        return true;
+    };
+    name.starts_with('.')
+        || name.starts_with('~')
+        || name.to_ascii_lowercase().ends_with(".part")
+        || name.to_ascii_lowercase().ends_with(".tmp")
+        || name.to_ascii_lowercase().ends_with(".download")
+}
+
 /// Backwards-compatible alias used by callers that still reference the old name.
 #[must_use]
 pub fn default_specs() -> Vec<ModelSpec> {
     Vec::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_dir(label: &str) -> PathBuf {
+        let unique = format!(
+            "veritas-models-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let dir = std::env::temp_dir().join(unique);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn lists_only_complete_gguf_files() {
+        // Arrange
+        let dir = temp_dir("list");
+        fs::write(dir.join("good.gguf"), b"GGUF....").unwrap();
+        fs::write(dir.join("upper.GGUF"), b"GGUF....").unwrap();
+        fs::write(dir.join("empty.gguf"), b"").unwrap();
+        fs::write(dir.join("partial.gguf.part"), b"GGUF").unwrap();
+        fs::write(dir.join("notes.txt"), b"GGUF").unwrap();
+        let manager = ModelManager::from_dir(dir.clone());
+
+        // Act
+        let ids: Vec<String> = manager.list().into_iter().map(|(s, _)| s.id).collect();
+
+        // Assert
+        assert!(ids.contains(&"good".to_string()));
+        assert!(ids.contains(&"upper".to_string()));
+        assert!(!ids.contains(&"empty".to_string()));
+        assert!(!ids.contains(&"partial".to_string()));
+        assert!(!ids.contains(&"notes".to_string()));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn resolves_upper_case_extension_to_real_file() {
+        // Arrange
+        let dir = temp_dir("resolve");
+        let path = dir.join("model.GGUF");
+        fs::write(&path, b"GGUF....").unwrap();
+        let manager = ModelManager::from_dir(dir.clone());
+
+        // Act
+        let resolved = manager.model_path("model");
+
+        // Assert
+        assert_eq!(resolved, path);
+        assert_eq!(manager.status("model"), ModelStatus::Ready);
+        assert_eq!(manager.status("absent"), ModelStatus::Missing);
+
+        let _ = fs::remove_dir_all(dir);
+    }
 }

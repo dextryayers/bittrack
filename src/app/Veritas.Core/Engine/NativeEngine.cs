@@ -43,6 +43,15 @@ public sealed class NativeEngine : IDisposable
     [DllImport("veritas_engine", CallingConvention = CallingConvention.Cdecl)]
     private static extern IntPtr veritas_list_models(IntPtr engine);
 
+    [DllImport("veritas_engine", CallingConvention = CallingConvention.Cdecl)]
+    private static extern IntPtr veritas_inspect_model(IntPtr pathUtf8);
+
+    [DllImport("veritas_engine", CallingConvention = CallingConvention.Cdecl)]
+    private static extern IntPtr veritas_preload_model(
+        IntPtr engine,
+        [MarshalAs(UnmanagedType.FunctionPtr)] ProgressCallback? progressCb,
+        IntPtr userData);
+
     public NativeEngine(string? configJson = null)
     {
         IntPtr cfg = configJson is null ? IntPtr.Zero : Marshal.StringToCoTaskMemUTF8(configJson);
@@ -134,6 +143,78 @@ public sealed class NativeEngine : IDisposable
         finally
         {
             veritas_free_string(p);
+        }
+    }
+
+    /// <summary>
+    /// Reads GGUF metadata without loading tensor weights. Cheap enough to run
+    /// before copying a multi-gigabyte file.
+    /// </summary>
+    public ModelInspection InspectModel(string path)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        IntPtr pathPtr = Marshal.StringToCoTaskMemUTF8(path);
+        IntPtr resultPtr = IntPtr.Zero;
+        try
+        {
+            resultPtr = veritas_inspect_model(pathPtr);
+            if (resultPtr == IntPtr.Zero)
+            {
+                throw new InvalidOperationException("Inspeksi model mengembalikan null.");
+            }
+            string json = Marshal.PtrToStringUTF8(resultPtr)!;
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("code", out _))
+            {
+                var err = JsonSerializer.Deserialize<ErrorPayload>(json)!;
+                throw new InvalidOperationException($"{err.Code}: {err.Message}");
+            }
+            return JsonSerializer.Deserialize<ModelInspection>(json)
+                ?? throw new InvalidOperationException("Metadata model tidak dapat dibaca.");
+        }
+        finally
+        {
+            if (resultPtr != IntPtr.Zero)
+            {
+                veritas_free_string(resultPtr);
+            }
+            Marshal.FreeCoTaskMem(pathPtr);
+        }
+    }
+
+    /// <summary>
+    /// Forces the engine to load the selected model and validate that its
+    /// weights work. This is the only honest way to confirm an uploaded GGUF is
+    /// usable before the user starts an analysis.
+    /// </summary>
+    public void PreloadModel(Action<ProgressEvent>? onProgress = null)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        IntPtr resultPtr = IntPtr.Zero;
+        try
+        {
+            var callback = CreateProgressCallback(onProgress);
+            resultPtr = veritas_preload_model(_handle, callback, IntPtr.Zero);
+            if (resultPtr == IntPtr.Zero)
+            {
+                throw new InvalidOperationException("Preload model mengembalikan null.");
+            }
+            string json = Marshal.PtrToStringUTF8(resultPtr)!;
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("code", out _))
+            {
+                var err = JsonSerializer.Deserialize<ErrorPayload>(json)!;
+                throw new InvalidOperationException($"{err.Code}: {err.Message}");
+            }
+        }
+        finally
+        {
+            if (resultPtr != IntPtr.Zero)
+            {
+                veritas_free_string(resultPtr);
+            }
         }
     }
 

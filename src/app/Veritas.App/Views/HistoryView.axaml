@@ -1,46 +1,84 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Veritas.App.ViewModels"
+             xmlns:svc="using:Veritas.Core.Services"
+             xmlns:conv="using:Veritas.App.Converters"
              x:Class="Veritas.App.Views.HistoryView"
              x:DataType="vm:MainViewModel">
-    <Grid Margin="32" RowDefinitions="Auto,*,Auto" MaxWidth="980">
-        <StackPanel Grid.Row="0" Spacing="12" Margin="0,0,0,20">
-            <TextBlock Text="Riwayat" Classes="h1" />
-            <TextBlock Text="Semua analisis disimpan lokal di perangkat ini." Classes="muted" />
-            <StackPanel Orientation="Horizontal" Spacing="12">
-                <Button Content="Muat ulang" Classes="ghost" Command="{Binding LoadHistoryCommand}" />
-                <Button Content="Hapus semua" Classes="ghost" Command="{Binding ClearHistoryCommand}" />
-            </StackPanel>
+    <UserControl.Resources>
+        <conv:VerdictToBrushConverter x:Key="VerdictBrush" />
+    </UserControl.Resources>
+
+    <Grid Margin="46,38,46,30" RowDefinitions="Auto,Auto,*" MaxWidth="1040">
+        <StackPanel Grid.Row="0" Spacing="6">
+            <TextBlock Text="RIWAYAT" Classes="eyebrow" />
+            <TextBlock Text="Catatan pemeriksaan di perangkat ini." Classes="h1" />
+            <TextBlock Classes="lede" MaxWidth="680"
+                       Text="Setiap analisis menyimpan hasil lengkap secara lokal. Klik satu baris untuk membuka kembali verdict, klaim, dan buktinya." />
         </StackPanel>
 
-        <ScrollViewer Grid.Row="1">
-            <StackPanel Spacing="12">
-                <Border Classes="card" IsVisible="{Binding !HasHistory}">
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="Belum ada riwayat" Classes="h2" />
-                        <TextBlock Text="Jalankan analisis pertama Anda. Hasilnya akan tersimpan lokal di sini." Classes="muted" TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,22,0,14">
+            <TextBox Text="{Binding HistoryQuery, Mode=TwoWay}" PlaceholderText="Cari teks masukan atau verdict..."
+                     MaxWidth="360" HorizontalAlignment="Left" Width="360" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button Content="Muat ulang" Classes="quiet" Command="{Binding LoadHistoryCommand}" />
+                <Button Content="Hapus semua" Classes="danger" Click="OnClearHistoryClick"
+                        IsEnabled="{Binding HasHistory}" />
+            </StackPanel>
+        </Grid>
 
-                <ItemsControl ItemsSource="{Binding History}" IsVisible="{Binding HasHistory}">
+        <Grid Grid.Row="2" RowDefinitions="Auto,*">
+            <Border BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="0,1,0,1" Padding="0,7"
+                    IsVisible="{Binding HasHistory}">
+                <Grid ColumnDefinitions="150,120,*,38">
+                    <TextBlock Text="WAKTU" Classes="meta" />
+                    <TextBlock Grid.Column="1" Text="VERDICT" Classes="meta" />
+                    <TextBlock Grid.Column="2" Text="MASUKAN" Classes="meta" />
+                </Grid>
+            </Border>
+
+            <ScrollViewer Grid.Row="1" IsVisible="{Binding HasHistory}">
+                <ItemsControl ItemsSource="{Binding History}">
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border Classes="card" Margin="0,0,0,12">
-                                <StackPanel Spacing="6">
-                                    <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <TextBlock Text="{Binding Verdict}" FontWeight="Bold" />
-                                        <TextBlock Text="{Binding Confidence, StringFormat='{}{0:P0}'}" Classes="muted" />
-                                        <TextBlock Text="{Binding CreatedAtDisplay}" FontSize="11" Classes="muted" />
-                                    </StackPanel>
-                                    <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
-                                </StackPanel>
-                            </Border>
+                        <DataTemplate x:DataType="svc:HistoryEntry">
+                            <Grid ColumnDefinitions="*,38" Margin="0,0,0,0">
+                                <Button Classes="quiet" HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Stretch" Padding="0,13"
+                                        ToolTip.Tip="Buka hasil lengkap"
+                                        Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).OpenHistoryCommand}"
+                                        CommandParameter="{Binding}">
+                                    <Grid ColumnDefinitions="150,120,*,Auto">
+                                        <TextBlock Text="{Binding CreatedAtDisplay}" Classes="meta" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding VerdictDisplay}"
+                                                   Foreground="{Binding Verdict, Converter={StaticResource VerdictBrush}}"
+                                                   FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="2" Text="{Binding InputPreview}" Classes="prose"
+                                                   TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                                   VerticalAlignment="Center" Margin="0,0,16,0" />
+                                        <TextBlock Grid.Column="3" Text="{Binding ConfidenceDisplay}" Classes="mono"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                                <Button Grid.Column="1" Content="×" Classes="quiet" FontSize="16"
+                                        ToolTip.Tip="Hapus catatan ini"
+                                        Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).DeleteHistoryCommand}"
+                                        CommandParameter="{Binding}" />
+                                <Border Grid.ColumnSpan="2" Classes="rule" VerticalAlignment="Bottom" />
+                            </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-            </StackPanel>
-        </ScrollViewer>
+            </ScrollViewer>
 
-        <TextBlock Grid.Row="2" Text="{Binding Status}" Classes="muted" Margin="0,12,0,0" />
+            <Border Grid.Row="1" Classes="soft" IsVisible="{Binding !HasHistory}" VerticalAlignment="Top">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Belum ada catatan." Classes="h3" />
+                    <TextBlock Classes="prose muted"
+                               Text="Jalankan analisis pertama, atau ubah kata kunci pencarian bila riwayat sudah ada." />
+                    <Button Content="Buka analisis" Classes="primary" HorizontalAlignment="Left"
+                            Command="{Binding OpenAnalyzeCommand}" />
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>
