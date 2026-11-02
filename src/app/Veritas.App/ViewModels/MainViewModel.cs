@@ -297,8 +297,38 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        string posterInput = PosterText.Trim();
+        if (!string.IsNullOrWhiteSpace(PosterImagePath) && File.Exists(PosterImagePath))
+        {
+            try
+            {
+                int width = 0;
+                int height = 0;
+                long bytes = new FileInfo(PosterImagePath).Length;
+                if (PosterPreview is not null)
+                {
+                    width = PosterPreview.PixelSize.Width;
+                    height = PosterPreview.PixelSize.Height;
+                }
+                else
+                {
+                    using var bitmap = new Avalonia.Media.Imaging.Bitmap(PosterImagePath);
+                    width = bitmap.PixelSize.Width;
+                    height = bitmap.PixelSize.Height;
+                }
+                if (width > 0 && height > 0)
+                {
+                    posterInput = $"[Gambar: {Path.GetFileName(PosterImagePath)}, {width}x{height}px, {bytes / 1024} KB]\n{posterInput}";
+                }
+            }
+            catch (Exception)
+            {
+                // Metadata is optional context; OCR text remains the primary input.
+            }
+        }
+
         var request = new AnalyzeRequest(
-            PosterText: PosterText,
+            PosterText: posterInput,
             LangHint: Settings.Language,
             Options: BuildOptions());
 
