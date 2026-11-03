@@ -556,24 +556,40 @@ fn analyze(
     let first = run_inference(inner, &loaded, &system, &user, max_tokens, None, report)?;
     let mut parsed = match serde_json::from_str::<ModelOutput>(&first.raw) {
         Ok(value) => value,
-        Err(e) => {
+        Err(first_error) => {
             warnings.push(format!(
-                "Keluaran model tidak sesuai skema ({e}); mencoba ulang."
+                "Keluaran model tidak sesuai skema ({first_error}); mencoba ulang."
             ));
             report("retry", 0.86, "mengulang inferensi");
-            let second = run_inference(
-                inner,
-                &loaded,
-                &system,
-                &user,
-                max_tokens,
-                Some(0x5EED),
-                report,
-            )?;
-            serde_json::from_str::<ModelOutput>(&second.raw).map_err(|e| ErrorPayload {
-                code: "inference_failed".into(),
-                message: format!("Model tidak menghasilkan JSON yang valid: {e}"),
-            })?
+            let mut last_error = first_error;
+            let mut last_raw = first.raw.clone();
+            let mut success = None;
+            for seed in [Some(0x5EED_u32), Some(0xC0FFEE_u32)] {
+                let retry = run_inference(inner, &loaded, &system, &user, max_tokens, seed, report)?;
+                match serde_json::from_str::<ModelOutput>(&retry.raw) {
+                    Ok(value) => {
+                        success = Some(value);
+                        break;
+                    }
+                    Err(error) => {
+                        last_error = error;
+                        last_raw = retry.raw.clone();
+                    }
+                }
+            }
+            match success {
+                Some(value) => value,
+                None => {
+                    let snippet: String = last_raw.chars().take(240).collect();
+                    return Err(ErrorPayload {
+                        code: "inference_failed".into(),
+                        message: format!(
+                            "Model tidak menghasilkan JSON yang valid setelah 3 percobaan: \
+                             {last_error}. Cuplikan keluaran: {snippet}"
+                        ),
+                    });
+                }
+            }
         }
     };
     check_cancel(inner)?;

@@ -124,7 +124,16 @@ pub(crate) fn inspect_file(path: &Path) -> ModelInspection {
         );
     }
 
-    let compatible = !is_embedding && !architecture.is_empty() && size_bytes > 0;
+    let is_vision = is_vision_model(&architecture, &name);
+    if is_vision {
+        warnings.push(
+            "Model ini adalah model vision (image-text-to-text). Veritas belum mendukung analisis \
+             gambar langsung; gunakan OCR + model teks."
+                .into(),
+        );
+    }
+
+    let compatible = !is_embedding && !is_vision && !architecture.is_empty() && size_bytes > 0;
     ModelInspection {
         ok: compatible,
         error: if compatible {
@@ -133,6 +142,8 @@ pub(crate) fn inspect_file(path: &Path) -> ModelInspection {
             Some("Metadata GGUF tidak lengkap.".into())
         } else if is_embedding {
             Some("Model embedding tidak didukung untuk analisis.".into())
+        } else if is_vision {
+            Some("Model vision (image-text-to-text) belum didukung; gunakan OCR + model teks.".into())
         } else {
             Some("File model tidak dapat digunakan.".into())
         },
@@ -197,7 +208,15 @@ fn is_embedding_architecture(architecture: &str) -> bool {
     )
 }
 
-/// Map llama.cpp's `llama_ftype` values that are unambiguous.
+fn is_vision_model(architecture: &str, name: &str) -> bool {
+    let arch = architecture.to_ascii_lowercase();
+    let name = name.to_ascii_lowercase();
+    arch.contains("vl")
+        || name.contains("-vl")
+        || name.contains("vision")
+        || name.contains("llava")
+        || name.contains("bakllava")
+}
 ///
 /// Unknown values are reported as unknown instead of being guessed. New
 /// quantization types are added by llama.cpp over time; a wrong label is worse
