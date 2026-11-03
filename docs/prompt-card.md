@@ -52,7 +52,7 @@ encyclopedia evidence. The model is the only component that produces a verdict.
 - Optional strict verification runs a second greedy inference with a different
   fixed seed and demotes the verdict if the two runs disagree. It tests
   consistency, not correctness, and doubles latency.
-- Generation is cooperative-cancellable and has a 300-second wall-clock cap.
+- Generation is cooperative-cancellable and has a 600-second wall-clock cap.
 
 ## Output
 

@@ -517,8 +517,8 @@ fn analyze(
     let max_tokens = inner
         .config
         .max_output_tokens
-        .unwrap_or(DEFAULT_MAX_OUTPUT_TOKENS)
-        .clamp(256, 3_000);
+        .unwrap_or(2048)
+        .clamp(256, 4_096);
     let subject_budget = subject_char_budget(loaded.context_tokens, max_tokens, evidence.len());
     if body.trim().chars().count() > subject_budget {
         warnings.push(format!(
@@ -533,7 +533,7 @@ fn analyze(
     if comments.chars().count() > (subject_budget / 4).clamp(200, MAX_COMMENTS_CHARS) {
         warnings.push("Sebagian komentar dipotong agar muat di konteks model.".into());
     }
-    let user = build_user_prompt(
+    let mut user = build_user_prompt(
         &title,
         &body,
         &poster,
@@ -545,6 +545,13 @@ fn analyze(
         req.lang_hint.as_str(),
         subject_budget,
     );
+    // Some reasoning models emit a long <think> block before the JSON answer,
+    // which can exhaust the token budget or the wall-clock ceiling. Ask for a
+    // direct answer; Qwen3 also honours the /no_think control token.
+    user.push_str("\n\nJawab langsung dengan JSON, tanpa reasoning panjang di luar JSON.");
+    if loaded.id.to_ascii_lowercase().contains("qwen3") {
+        user.push_str("\n/no_think");
+    }
 
     let first = run_inference(inner, &loaded, &system, &user, max_tokens, None, report)?;
     let mut parsed = match serde_json::from_str::<ModelOutput>(&first.raw) {
@@ -630,7 +637,7 @@ fn analyze(
     report("map", 0.93, "menyusun hasil");
     let truth_provided = parsed.truth_score.is_some();
     let mut confidence = clamp_ratio(parsed.confidence.unwrap_or(50));
-    let truth_percentage = parsed
+    let mut truth_percentage = parsed
         .truth_score
         .unwrap_or(50)
         .clamp(0, 100) as u8;
@@ -721,7 +728,7 @@ fn analyze(
     // ------------------------------------------------------------------
     // Optional deep verification: three independent inferences, majority vote.
     // ------------------------------------------------------------------
-    let mut deep_majority_count = 0usize;
+    let mut _deep_majority_count = 0usize;
     if opts.deep_verification {
         report("verify", 0.89, "verifikasi mendalam: 2 inferensi tambahan");
         let mut verdicts = vec![Verdict::parse(&parsed.verdict).unwrap_or(Verdict::Unverifiable)];
@@ -757,7 +764,7 @@ fn analyze(
             .into_iter()
             .max_by_key(|(_, count)| *count)
             .unwrap_or((Verdict::Unverifiable, 0));
-        deep_majority_count = majority_count;
+        _deep_majority_count = majority_count;
 
         if majority_count < 2 || verdicts.len() < 3 {
             verdict = Verdict::Unverifiable;
@@ -800,7 +807,7 @@ fn analyze(
             }
         }
 
-        if deep_majority_count >= 2 && warnings.iter().any(|w| w.contains("tidak terbaca")) {
+        if _deep_majority_count >= 2 && warnings.iter().any(|w| w.contains("tidak terbaca")) {
             confidence = confidence.min(0.55);
         }
     }

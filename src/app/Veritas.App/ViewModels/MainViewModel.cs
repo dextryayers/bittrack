@@ -224,7 +224,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         model_id = string.IsNullOrWhiteSpace(Settings.ModelId) ? null : Settings.ModelId,
         threads = Math.Clamp(Environment.ProcessorCount, 1, 8),
         context_tokens = 8192,
-        max_output_tokens = 1400,
+        max_output_tokens = 2048,
         online_evidence = Settings.OnlineEvidence,
     }));
 

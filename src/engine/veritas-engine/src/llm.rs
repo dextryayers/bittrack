@@ -19,7 +19,7 @@ use llama_cpp_2::sampling::LlamaSampler;
 use thiserror::Error;
 
 /// Hard ceiling for a single generation.
-const GENERATION_DEADLINE: Duration = Duration::from_secs(300);
+const GENERATION_DEADLINE: Duration = Duration::from_secs(600);
 
 /// Errors produced by the inference layer.
 #[derive(Debug, Error)]
@@ -340,6 +340,7 @@ impl Llm {
 /// wasted tokens and reduces the chance of a degenerate tail.
 fn json_object_complete(output: &[u8]) -> bool {
     let text = String::from_utf8_lossy(output);
+    let text = strip_reasoning(&text);
     let Some(start) = text.find('{') else {
         return false;
     };
@@ -377,14 +378,54 @@ fn json_object_complete(output: &[u8]) -> bool {
 
 /// Extract the first complete top-level JSON object from model output.
 fn extract_json_object(text: &str) -> Option<String> {
-    let start = text.find('{')?;
-    let end = text.rfind('}')?;
-    if end <= start {
-        return None;
+    let text = strip_reasoning(text);
+    // Try every closing brace from the end so a trailing note after the JSON
+    // object does not hide a valid object earlier in the output.
+    let mut search_end = text.len();
+    while let Some(end) = text[..search_end].rfind('}') {
+        let mut depth = 0i32;
+        for (i, ch) in text[..=end].char_indices().rev() {
+            match ch {
+                '}' => depth += 1,
+                '{' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        let candidate = text[i..=end].trim();
+                        if serde_json::from_str::<serde_json::Value>(candidate).is_ok() {
+                            return Some(candidate.to_string());
+                        }
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if search_end == 0 {
+            break;
+        }
+        search_end = end;
+        if search_end == 0 {
+            break;
+        }
+        search_end -= 1;
     }
-    let candidate = text[start..=end].trim();
-    serde_json::from_str::<serde_json::Value>(candidate).ok()?;
-    Some(candidate.to_string())
+    None
+}
+
+/// Remove reasoning blocks that some models emit before the JSON answer.
+fn strip_reasoning(text: &str) -> String {
+    let mut out = text.to_string();
+    // <think>...</think> (Qwen3-style reasoning)
+    while let (Some(start), Some(end)) = (out.find("<think>"), out.find("</think>")) {
+        if end >= start {
+            out.replace_range(start..end + "</think>".len(), "");
+        } else {
+            break;
+        }
+    }
+    // ```json ... ``` fenced blocks
+    out = out.replace("```json", "").replace("```", "");
+    out
 }
 
 #[cfg(test)]

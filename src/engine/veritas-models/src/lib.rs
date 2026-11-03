@@ -207,11 +207,20 @@ impl ModelManager {
             .map(|(s, _)| s)
     }
 
-    /// The best installed model: the first one found (largest if tie-break by name).
+    /// The best installed model: prefers non-reasoning instruct models, then
+    /// larger files. Reasoning models are slower and less reliable for
+    /// structured JSON output, so they are only chosen when nothing else exists.
     #[must_use]
     pub fn best_installed(&self) -> Option<ModelSpec> {
         let mut list = self.list();
-        list.sort_by(|a, b| b.0.size_bytes.cmp(&a.0.size_bytes));
+        list.sort_by(|a, b| {
+            let a_reasoning = is_reasoning_name(&a.0.name);
+            let b_reasoning = is_reasoning_name(&b.0.name);
+            b_reasoning
+                .cmp(&a_reasoning)
+                .then_with(|| b.0.size_bytes.cmp(&a.0.size_bytes))
+                .then_with(|| a.0.name.cmp(&b.0.name))
+        });
         list.into_iter().next().map(|(s, _)| s)
     }
 }
@@ -246,6 +255,16 @@ fn is_incomplete(path: &Path) -> bool {
 #[must_use]
 pub fn default_specs() -> Vec<ModelSpec> {
     Vec::new()
+}
+
+/// Whether the file name suggests a reasoning/thinking model.
+fn is_reasoning_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.contains("reasoning")
+        || lower.contains("thinking")
+        || lower.contains("-r1")
+        || lower.contains("r1-")
+        || lower.contains("deepseek-r1")
 }
 
 #[cfg(test)]
